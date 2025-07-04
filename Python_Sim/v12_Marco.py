@@ -53,9 +53,11 @@ def main():
         if plataforma.curve_mode == "straight":
             plataforma.steerWheels("straight")
         elif plataforma.curve_mode == "curve":
-            plataforma.steerWheels("curve", angle_offset=0)
+            angle_offset = 0
+            plataforma.steerWheels("curve", angle_offset=angle_offset)
         elif plataforma.curve_mode == "diagonal":
-            plataforma.steerWheels("diagonal", diagonal_angle=0)
+            angle_offset = 0
+            plataforma.steerWheels("diagonal", diagonal_angle=angle_offset)
         elif plataforma.curve_mode == "pivotal":
             plataforma.steerWheels("pivotal")
         
@@ -86,6 +88,7 @@ def main():
         angle_offset -= 1
 
         if plataforma.curve_mode == "curve":
+            
             plataforma.steerWheels("curve", angle_offset=angle_offset)
 
         elif plataforma.curve_mode == "diagonal":
