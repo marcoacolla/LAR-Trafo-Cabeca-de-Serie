@@ -20,83 +20,225 @@ from Robot.Drivetrain.Vehicle import Vehicle
 
 from Application.Screen import Screen
 
+import GVL
+
 
 
 def main():
 
     turtle.tracer(0, 0)
 
+    is_transitioning = False
     
     # Cria a tela e o veículo
     screen = Screen(title="Projeto TRAFO: Simulação de Veículo 4WS")
     plataforma = Vehicle("Plataforma", "DarkGoldenrod1", (0, 0))
 
     # Lista de modos pelos quais o 'curve_mode' vai comutar
-    curvature_modes = ["straight", "curve", "diagonal", "pivotal"]
+    curvature_modes = ["straight", "curve", "straight", "diagonal","straight", "pivotal", "straight","straight_and_curve"]
     current_mode_index = 0
+
+    press_start_time = {"A": None, "D": None}
+    is_pressed = {"A": False, "D": False}
+    angle_step_base = 1
+
 
     # Offset de esterçamento para o modo 'curve'
     angle_offset = 0
+    def setMode(mode):
+        nonlocal current_mode_index, angle_offset, is_transitioning
 
+        if is_transitioning:
+            return
+        plataforma.curvature.turtle.clear()
+
+        current_mode_index = (current_mode_index + 1) % len(curvature_modes)
+        new_mode = mode
+
+        angle_offset = 0  # reseta sempre ao trocar
+
+        if new_mode in ["curve", "diagonal"]:
+            smoothSteeringTransition(new_mode, target_angle=angle_offset)
+        else:
+            smoothSteeringTransition(new_mode)
+
+        # Atualiza modo APENAS depois da transição (já feito na função)
+        
+        # Atualiza os gráficos
+        plataforma.curvature.update()
+        turtle.update()
     # Callback que alterna para o próximo modo
     def toggleMode():
+        nonlocal current_mode_index, angle_offset, is_transitioning
 
-        nonlocal current_mode_index, angle_offset
-
+        if is_transitioning:
+            return
         plataforma.curvature.turtle.clear()
-        
-        # Avança para o próximo modo, em loop
+
         current_mode_index = (current_mode_index + 1) % len(curvature_modes)
-        plataforma.curve_mode = curvature_modes[current_mode_index]
+        new_mode = curvature_modes[current_mode_index]
 
-        # Ajusta rodas conforme o novo modo
-        if plataforma.curve_mode == "straight":
-            plataforma.steerWheels("straight")
-        elif plataforma.curve_mode == "curve":
-            angle_offset = 0
-            plataforma.steerWheels("curve", angle_offset=angle_offset)
-        elif plataforma.curve_mode == "diagonal":
-            angle_offset = 0
-            plataforma.steerWheels("diagonal", diagonal_angle=angle_offset)
-        elif plataforma.curve_mode == "pivotal":
-            plataforma.steerWheels("pivotal")
+        angle_offset = 0  # reseta sempre ao trocar
+
+        if new_mode in ["curve", "diagonal"]:
+            smoothSteeringTransition(new_mode, target_angle=angle_offset)
+        else:
+            smoothSteeringTransition(new_mode)
+
+        # Atualiza modo APENAS depois da transição (já feito na função)
         
         # Atualiza os gráficos
         plataforma.curvature.update()
         turtle.update()
-    
-    # Callback para as teclas de ajuste de ângulo (aumenta)
-    def keyPressed_A():
 
-        nonlocal angle_offset
-        angle_offset += 1
+    def smoothSteeringTransition(mode, target_angle=0, duration=300):
+        nonlocal is_transitioning
 
-        if plataforma.curve_mode == "curve":
-            plataforma.steerWheels("curve", angle_offset=angle_offset)
+        is_transitioning = True
+        
+        steps = 100
+        interval = int(duration / steps)
 
-        elif plataforma.curve_mode == "diagonal":
-            plataforma.steerWheels("diagonal", diagonal_angle=angle_offset)
+        current_angles = [wheel.getHeading() for wheel in plataforma.wheels]
 
-        # Atualiza os gráficos
-        plataforma.curvature.update()
-        turtle.update()
+        # Função auxiliar para calcular os ângulos finais desejados (sem aplicar ainda)
+        def computeTargetAngles():
+            if mode == "straight":
 
-    # Callback para as teclas de ajuste de ângulo (diminui)
-    def keyPressed_D():
+                return [plataforma.getHeading()] * 4
 
-        nonlocal angle_offset
-        angle_offset -= 1
+            elif mode == "diagonal":
+                return [target_angle] * 4
 
-        if plataforma.curve_mode == "curve":
+            elif mode == "pivotal":
+                base = plataforma.getHeading()
+                ang = math.degrees(math.atan2(GVL.ROBOT_LENGHT, GVL.ROBOT_WIDHT))
+                return [
+                    (base + 360 - ang) % 360,
+                    (base + 180 + ang) % 360,
+                    (base + 360 + ang) % 360,
+                    (base + 180 - ang) % 360
+                ]
+
+            elif mode == "curve":
+                R = 500 + 10 * target_angle
+                cx, cy = plataforma.getPosition()
+                theta_v = math.radians(plataforma.getHeading())
+                icr = (cx - R * math.cos(theta_v), cy - R * math.sin(theta_v))
+                plataforma.curvature_radius = R
+                vx_v, vy_v = math.cos(theta_v), math.sin(theta_v)
+                final = []
+
+                for wheel in plataforma.wheels:
+                    wx, wy = wheel.getPosition()
+                    rx, ry = wx - icr[0], wy - icr[1]
+                    ang_r = math.degrees(math.atan2(ry, rx))
+
+                    cand1 = (ang_r + 90) % 360
+                    cand2 = (ang_r - 90) % 360
+
+                    vx1, vy1 = math.cos(math.radians(cand1)), math.sin(math.radians(cand1))
+                    vx2, vy2 = math.cos(math.radians(cand2)), math.sin(math.radians(cand2))
+
+                    dot1 = vx1 * vx_v + vy1 * vy_v
+                    dot2 = vx2 * vx_v + vy2 * vy_v
+
+                    tangent = cand1 if dot1 > dot2 else cand2
+
+                    if wheel.name.endswith("COL_1_wheel") or wheel.name.endswith("COL_2_wheel"):
+                        final.append((tangent + 90) % 360)
+                    else:
+                        final.append((tangent - 90) % 360)
+
+                return final
+
+            else:
+                return current_angles  # fallback: sem transição
+
+        target_angles = computeTargetAngles()
+
+        def interpolate(step):
+            nonlocal is_transitioning
+            if step > steps:
+                plataforma.curve_mode = mode  # só muda o modo quando termina a animação
+                
+                is_transitioning = False
+                return
+
+            for i, wheel in enumerate(plataforma.wheels):
+                start = current_angles[i]
+                end = target_angles[i]
+
+                # Interpolação circular (leva em conta wraparound dos ângulos)
+                diff = (end - start + 540) % 360 - 180
+                interpolated = (start + diff * (step / steps)) % 360
+                wheel.setHeading(interpolated)
+
             
-            plataforma.steerWheels("curve", angle_offset=angle_offset)
+            turtle.update()
+            plataforma.curvature.update()
+            turtle.ontimer(lambda: interpolate(step + 1), interval)
 
-        elif plataforma.curve_mode == "diagonal":
-            plataforma.steerWheels("diagonal", diagonal_angle=angle_offset)
+        interpolate(1)
 
-        # Atualiza os gráficos
+
+    # Callback para as teclas de ajuste de ângulo (aumenta)
+    def updateAngleSpeed(key):
+        nonlocal angle_offset
+
+        if plataforma.curve_mode != "curve" or not is_pressed[key]:
+            return
+
+        now = time.time()
+        duration = now - press_start_time[key]
+        step = int(angle_step_base + duration * 3)
+
+        if key == "A":
+            angle_offset += step
+        elif key == "D":
+            angle_offset -= step
+
+        plataforma.steerWheels("curve", angle_offset=angle_offset)
+
+        if angle_offset > 100 or angle_offset < -200:
+            setMode("straight")
         plataforma.curvature.update()
         turtle.update()
+
+        # Chama de novo daqui a 30ms se ainda estiver pressionado
+        turtle.ontimer(lambda: updateAngleSpeed(key), 30)
+
+    def keyPressed_A():
+        if plataforma.curve_mode == "curve" and not is_pressed["A"]:
+            press_start_time["A"] = time.time()
+            is_pressed["A"] = True
+            updateAngleSpeed("A")
+        elif plataforma.curve_mode == "diagonal":
+            nonlocal angle_offset
+            angle_offset += 1
+            plataforma.steerWheels("diagonal", diagonal_angle=angle_offset)
+            plataforma.curvature.update()
+            turtle.update()
+
+    def keyPressed_D():
+        if plataforma.curve_mode == "curve" and not is_pressed["D"]:
+            press_start_time["D"] = time.time()
+            is_pressed["D"] = True
+            updateAngleSpeed("D")
+        elif plataforma.curve_mode == "diagonal":
+            nonlocal angle_offset
+            angle_offset -= 1
+            plataforma.steerWheels("diagonal", diagonal_angle=angle_offset)
+            plataforma.curvature.update()
+            turtle.update()
+
+    def keyReleased_A():
+        is_pressed["A"] = False
+        press_start_time["A"] = None
+
+    def keyReleased_D():
+        is_pressed["D"] = False
+        press_start_time["D"] = None
 
     def ResetVehicle():
         plataforma.setPosition((0, 0))
@@ -116,15 +258,16 @@ def main():
 
     # Abre a escuta do turtle para o pressionamento de teclas
     turtle.listen()
-    turtle.onkeypress(lambda: callMovement("forward"), "w")  # Amarra o "W" para makeMovement no sentido forward
+    turtle.onkeypress(lambda: callMovement("forward"), "w") # Amarra o "W" para makeMovement no sentido forward
     turtle.onkeypress(lambda: callMovement("backward"), "s") # Amarra o "S" para makeMovement no sentido backward
-
-    # Associa teclas às funções
-    turtle.listen()
-    turtle.onkeypress(keyPressed_A, "a")
-    turtle.onkeypress(keyPressed_D, "d")
     turtle.onkeypress(toggleMode,  "space")
     turtle.onkeypress(ResetVehicle,"r")
+
+    turtle.onkeypress(keyPressed_A, "a")
+    turtle.onkeyrelease(keyReleased_A, "a")
+
+    turtle.onkeypress(keyPressed_D, "d")
+    turtle.onkeyrelease(keyReleased_D, "d")
 
     # Inicializa o veículo no modo "straight"
     plataforma.curve_mode = "straight"
