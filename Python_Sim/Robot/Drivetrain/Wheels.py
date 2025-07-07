@@ -10,20 +10,20 @@ TIRE_THICKNESS = GVL.TIRE_THICKNESS
 class Wheel:
 
     # Método construtor da classe Roda
-    def __init__(self, parent, name, x_offset, y_offset, color="azure4", width=2*WHEEL_RADIUS, lenght=TIRE_THICKNESS):
+    def __init__(self, parent, name, x_offset, y_offset, color="azure4", width=2*WHEEL_RADIUS, length=TIRE_THICKNESS):
 
         # Inicialização dos atributos da classe
         self.parent = parent                                # Objeto 'pai': Vehicle
         self.name = f'{self.parent.getName()}_{name}_wheel' # Nome da instância
         self.width = width                                  # Largura do objeto
-        self.lenght = lenght                                # Comprimento do objeto
+        self.length = length                                # Comprimento do objeto
         self.relative_position = (x_offset, y_offset)       # Deslocamento relativo ao centro do veículo
 
         # Inicialização da tartaruga que representa a instância da classe
         self.turtle = turtle.Turtle()
         self.turtle.color(color)
         self.turtle.shape("square")
-        self.turtle.shapesize(stretch_wid=self.width/20, stretch_len=self.lenght/20)
+        self.turtle.shapesize(stretch_wid=self.width/20, stretch_len=self.length/20)
         self.turtle.penup()
 
         # Inicialização dos sistemas de eixos que orientam a roda

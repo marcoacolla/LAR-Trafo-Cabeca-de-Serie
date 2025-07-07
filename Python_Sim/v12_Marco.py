@@ -54,15 +54,14 @@ def main():
 
         new_mode = mode
 
-        angle_offset = 0  # reseta sempre ao trocar
+        angle_offset = 0 # reseta sempre ao trocar
 
         if new_mode in ["curve", "diagonal"]:
             smoothSteeringTransition(new_mode, target_angle=angle_offset)
         else:
             smoothSteeringTransition(new_mode)
 
-        # Atualiza modo APENAS depois da transição (já feito na função)
-        
+
         # Atualiza os gráficos
         
         plataforma.curvature.update()
@@ -106,7 +105,7 @@ def main():
 
             elif mode == "pivotal":
                 base = plataforma.getHeading()
-                ang = math.degrees(math.atan2(GVL.ROBOT_LENGHT, GVL.ROBOT_WIDHT))
+                ang = math.degrees(math.atan2(GVL.ROBOT_LENGTH, GVL.ROBOT_WIDTH))
                 return [
                     (base + 360 - ang) % 360,
                     (base + 180 + ang) % 360,
@@ -115,12 +114,12 @@ def main():
                 ]
 
             elif mode == "curve":
-                R = 500 + 10 * target_angle
-                cx, cy = plataforma.getPosition()
+                icr = plataforma.curvature.computeICR()
+                if icr is None:
+                    return current_angles  # fallback se ICR não pôde ser determinado
+
                 theta_v = math.radians(plataforma.getHeading())
-                icr = (cx - R * math.cos(theta_v), cy - R * math.sin(theta_v))
-                plataforma.curvature_radius = R
-                vx_v, vy_v = math.cos(theta_v), math.sin(theta_v)
+                vx_v, vy_v = -math.sin(theta_v), math.cos(theta_v)
                 final = []
 
                 for wheel in plataforma.wheels:
@@ -139,10 +138,7 @@ def main():
 
                     tangent = cand1 if dot1 > dot2 else cand2
 
-                    if wheel.name.endswith("COL_1_wheel") or wheel.name.endswith("COL_2_wheel"):
-                        final.append((tangent + 90) % 360)
-                    else:
-                        final.append((tangent - 90) % 360)
+                    final.append(tangent)
 
                 return final
 
@@ -231,6 +227,19 @@ def main():
         elif plataforma.curve_mode == "straight":
             setMode("curve")
 
+    def keyPressed_Q():
+        plataforma.icr_bias = max(0, plataforma.icr_bias - 0.05)  # permite extrapolar até um pouco antes da traseira
+        if plataforma.curve_mode == "curve":
+            plataforma.steerWheels("curve", angle_offset=angle_offset, icr_bias=plataforma.icr_bias)
+            plataforma.curvature.update()
+            turtle.update()
+
+    def keyPressed_E():
+        plataforma.icr_bias = min(1, plataforma.icr_bias + 0.05)  # extrapola até além da dianteira
+        if plataforma.curve_mode == "curve":
+            plataforma.steerWheels("curve", angle_offset=angle_offset, icr_bias=plataforma.icr_bias)
+            plataforma.curvature.update()
+            turtle.update()
     def keyReleased_A():
         is_pressed["A"] = False
         press_start_time["A"] = None
@@ -267,6 +276,9 @@ def main():
 
     turtle.onkeypress(keyPressed_D, "d")
     turtle.onkeyrelease(keyReleased_D, "d")
+
+    turtle.onkeypress(keyPressed_Q, "q")
+    turtle.onkeypress(keyPressed_E, "e")
 
     # Inicializa o veículo no modo "straight"
     plataforma.curve_mode = "straight"

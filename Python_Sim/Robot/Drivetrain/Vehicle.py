@@ -7,8 +7,8 @@ from Robot.Drivetrain.Wheels import Wheel
 from Robot.Pathing.Axes import Axes
 from Robot.Pathing.Curvature import Curvature
 
-ROBOT_LENGHT = GVL.ROBOT_LENGHT 
-ROBOT_WIDHT = GVL.ROBOT_WIDHT 
+ROBOT_LENGTH = GVL.ROBOT_LENGTH
+ROBOT_WIDTH = GVL.ROBOT_WIDTH 
 STEP = GVL.STEP
 ANGULAR_VEL_CONST = GVL.ANGULAR_VEL_CONST
 
@@ -16,15 +16,15 @@ ANGULAR_VEL_CONST = GVL.ANGULAR_VEL_CONST
 class Vehicle:
 
     # Método construtor da classe Roda
-    def __init__(self, name, color, position, width=ROBOT_LENGHT, lenght=ROBOT_WIDHT):
+    def __init__(self, name, color, position, width=ROBOT_LENGTH, length=ROBOT_WIDTH):
 
         # Inicialização dos atributos da classe
         self.name = name     # Nome da instância
         self.width = width   # Comprimento do objeto
-        self.lenght = lenght # Largura do objeto
-
+        self.length = length # Largura do objeto
+        self.icr_bias = 0.5
         # Variáveis auxiliares para posicionamento das rodas
-        half_length = self.lenght / 2 # Metade do comprimento do objeto
+        half_length = self.length / 2 # Metade do comprimento do objeto
         half_width = self.width   / 2 # Metade da largura do objeto
 
         # Inicialização da tartaruga que representa a instância da classe
@@ -32,7 +32,7 @@ class Vehicle:
         self.turtle.pen(outline=8)
         self.turtle.color(color, "")
         self.turtle.shape("square")
-        self.turtle.shapesize(stretch_wid=self.width/20, stretch_len=self.lenght/20)
+        self.turtle.shapesize(stretch_wid=self.width/20, stretch_len=self.length/20)
         self.turtle.penup()
 
         # Array com as rodas do veículo
@@ -87,6 +87,7 @@ class Vehicle:
     # Define uma nova orientação para a instância
     def setHeading(self, new_heading):
 
+
         # Atualia o heading do próprio veículo
         self.turtle.setheading(new_heading)
 
@@ -94,8 +95,7 @@ class Vehicle:
         self.fixed_axes.updateOrientation()
         self.moving_axes.updateOrientation()
 
-    # Provoca o esterçamento das rodas
-    def steerWheels(self, curve_mode, diagonal_angle=0, curvature_radius=500, angle_offset=1):
+    def steerWheels(self, curve_mode, diagonal_angle=0, curvature_radius=500, angle_offset=1, icr_bias=0.5):
         
         # Modo 'straight': rodas todas alinhadas a 0°
         if curve_mode == "straight":
@@ -123,7 +123,7 @@ class Vehicle:
         elif curve_mode == "pivotal":
             
             # Atualiza o ângulo com base na fórmula
-            steering_angle = math.degrees(math.atan2(ROBOT_LENGHT, ROBOT_WIDHT))
+            steering_angle = math.degrees(math.atan2(ROBOT_LENGTH, ROBOT_WIDTH))
             
             self.wheels[0].setHeading(self.getHeading() + 360 - steering_angle)
             self.wheels[1].setHeading(self.getHeading() + 180 + steering_angle)
@@ -132,45 +132,32 @@ class Vehicle:
             
         # Modo 'curve': rodas internas e externas com alpha e beta
         elif curve_mode == "curve":
-                    
-                    # ------------------------------------------------------------------
-            # (1) Onde quero o centro da curva?
-            R = curvature_radius + 10 * angle_offset  # mesmo parâmetro que já usava
-            cx, cy = self.getPosition()
+            R = curvature_radius + 10 * angle_offset
             theta_v = math.radians(self.getHeading())
-            icr = (cx - R * math.cos(theta_v),   # ponto R unidades “atrás” do veículo
-                cy - R * math.sin(theta_v))
+            cx, cy = self.getPosition()
 
-            # Guarda para Curvature.computeICR() poder desenhar o círculo certo.
-            self.curvature_radius = R
+            # Posição do ICR
+            icr_x = cx - R * math.cos(theta_v)
+            icr_y = cy - R * math.sin(theta_v)
 
-            # ------------------------------------------------------------------
-            # (2) Define heading de cada roda para ser tangente ao círculo dela
-            vx_v, vy_v = math.cos(theta_v), math.sin(theta_v)  # vetor “frente” do veículo
+            vx_v, vy_v = math.cos(theta_v), math.sin(theta_v)
 
             for wheel in self.wheels:
                 wx, wy = wheel.getPosition()
-                rx, ry = wx - icr[0], wy - icr[1]              # raio roda←ICR
-                ang_r = math.degrees(math.atan2(ry, rx))       # ângulo do raio em graus
+                rx, ry = wx - icr_x, wy - icr_y
+                ang_r = math.degrees(math.atan2(ry, rx))
 
-                # duas tangentes possíveis (±90°)
                 cand1 = (ang_r + 90) % 360
                 cand2 = (ang_r - 90) % 360
 
-                # Escolhe a que aponta mais “para frente” do veículo
-                vx_c1, vy_c1 = math.cos(math.radians(cand1)), math.sin(math.radians(cand1))
-                vx_c2, vy_c2 = math.cos(math.radians(cand2)), math.sin(math.radians(cand2))
-                dot1 = vx_c1 * vx_v + vy_c1 * vy_v
-                dot2 = vx_c2 * vx_v + vy_c2 * vy_v
-                
-                tangent = cand1 if dot1 > dot2 else cand2   # ângulo da tangente desejada
+                vx1, vy1 = math.cos(math.radians(cand1)), math.sin(math.radians(cand1))
+                vx2, vy2 = math.cos(math.radians(cand2)), math.sin(math.radians(cand2))
 
-                if wheel.name == f'{self.getName()}_COL_1_wheel' or wheel.name == f'{self.getName()}_COL_2_wheel':
-                    wheel.setHeading((tangent + 90) % 360)      # +90° → x-axis vira a tangente
-                else:
-                    wheel.setHeading((tangent - 90) % 360)      # +90° → x-axis vira a tangente
-                    
-            self.curvature.update()
+                dot1 = vx1 * vx_v + vy1 * vy_v
+                dot2 = vx2 * vx_v + vy2 * vy_v
+
+                tangent = cand1 if dot1 > dot2 else cand2
+                wheel.setHeading(tangent)
 
     # Atualiza o heading e a posição do veículo com base nos valores das rodas.
     def updatePositionFromWheels(self):
@@ -188,7 +175,7 @@ class Vehicle:
     
     #
     def makeMovement(self, direction, step=5.0):
-      
+    
         if self.curve_mode == "straight":
             
             # Movimento em linha reta: deslocamento tangencial forward
@@ -245,10 +232,10 @@ class Vehicle:
             
             # Sentido anti-horário
             if direction == "forward":
-                dtheta = -step / ROBOT_LENGHT 
+                dtheta = -step / ROBOT_LENGTH
             # Sentido horário
             elif direction == "backward":
-                dtheta = step / ROBOT_LENGHT
+                dtheta = step / ROBOT_LENGTH
             
             # Atualiza o heading do veículo (em graus), garantindo a rotação ao redor de seu próprio eixo
             dtheta_deg = math.degrees(dtheta)
@@ -282,7 +269,7 @@ class Vehicle:
                 dy = cy - icr_y
                 R = math.sqrt(dx**2 + dy**2)
                 if R < 1e-3:
-                    R = ROBOT_LENGHT
+                    R = ROBOT_LENGTH
 
                 #Admite o ângulo incremental (dθ) como uma constante dada pelo step de 5 un. pelo comprimento do robô
                 dtheta = ANGULAR_VEL_CONST
@@ -309,10 +296,12 @@ class Vehicle:
                 # Como as rodas possuem um ângulo relativo já definido (pelo steering),
                 # elas precisam ser incrementadas pelo mesmo ângulo do veículo.
                 for wheel in self.wheels:
+                    
                     wheel.setHeading((wheel.getHeading() + dtheta_deg) % 360)
 
             # Atualiza a posição de cada roda, usando a posição do veículo e considerando o deslocamento relativo
             for wheel in self.wheels:
+                print(wheel.getHeading())
                 wheel.setPosition(self.getPosition())
 
             # Atualiza o desenho da trajetória (curvatura) de forma gráfica

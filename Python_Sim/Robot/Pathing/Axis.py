@@ -4,19 +4,19 @@ import turtle
 class Axis:
 
     # Método construtor da classe
-    def __init__(self, parent, name, color, width, lenght):
+    def __init__(self, parent, name, color, width, length):
 
         # Inicialização dos atributos da classe
         self.parent = parent                               # Objeto 'pai': Axes
         self.name = f'{self.parent.getName()}_{name}_axis' # Nome da instância
         self.width = width                                 # Largura do objeto
-        self.lenght = lenght                               # Comprimento do objeto
+        self.length = length                               # Comprimento do objeto
 
         # Inicialização da tartaruga que representa a instância da classe
         self.turtle = turtle.Turtle()
         self.turtle.color(color)
         self.turtle.shape("square")
-        self.turtle.shapesize(stretch_wid=self.width/20, stretch_len=self.lenght/20)
+        self.turtle.shapesize(stretch_wid=self.width/20, stretch_len=self.length/20)
         self.turtle.penup()
 
         # Posiciona e orienta o eixo com base no objeto 'pai'

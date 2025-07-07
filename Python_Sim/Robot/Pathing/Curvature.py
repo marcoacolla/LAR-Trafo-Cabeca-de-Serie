@@ -21,66 +21,39 @@ class Curvature:
 
     # Calcula o Centro Instantâneo de Rotação com base na interseção das linhas de direção das rodas
     def computeICR(self):
+        wheels = self.vehicle.wheels
 
-        # force the ICR on the vehicle's local X axis in curve mode
-        if self.vehicle.curve_mode == "curve":
-            cx, cy = self.vehicle.getPosition()
-            θ = math.radians(self.vehicle.getHeading())
-            R = self.vehicle.curvature_radius
-            # point R units along the heading direction
-            icr_x = cx - R * math.cos(θ)
-            icr_y = cy - R * math.sin(θ)
-            return (icr_x, icr_y)
-        
-        # Função auxiliar para calcular a interseção de duas linhas de direção
-        def computeIntersection(wheel_a, wheel_b):
+        def intersection(w1, w2):
+            x0, y0 = w1.getPosition()
+            theta0 = math.radians(w1.getHeading())
+            dx0, dy0 = math.cos(theta0), math.sin(theta0)
 
-            # Obtém as coordenadas e a orientação da roda A
-            x0, y0 = wheel_a.getPosition()
-            theta0 = math.radians(wheel_a.getHeading()) # Converte o ângulo da roda para radianos
-            d0 = (math.cos(theta0), math.sin(theta0))   # Direção da roda A como um vetor unitário
+            x1, y1 = w2.getPosition()
+            theta1 = math.radians(w2.getHeading())
+            dx1, dy1 = math.cos(theta1), math.sin(theta1)
 
-            # Obtém as coordenadas e a orientação da roda B
-            x1, y1 = wheel_b.getPosition()
-            theta1 = math.radians(wheel_b.getHeading()) # Converte o ângulo da roda B para radianos
-            d1 = (math.cos(theta1), math.sin(theta1))   # Direção da roda B como um vetor unitário
-
-            # Calcula o denominador da fórmula de interseção (produto vetorial entre as direções)
-            denominator = d0[0]*d1[1] - d0[1]*d1[0]
-
-            # Se o denominador for muito pequeno, as linhas são paralelas
-            if abs(denominator) < 1E-6:
+            denom = dx0 * dy1 - dy0 * dx1
+            if abs(denom) < 1e-6:
                 return None
 
-            # Calcula o parâmetro t0 (parâmetro escalar da reta) para a interseção entre as duas linhas
-            t0 = ((x1 - x0)*d1[1] - (y1 - y0)*d1[0]) / denominator
+            t0 = ((x1 - x0) * dy1 - (y1 - y0) * dx1) / denom
+            ix = x0 + t0 * dx0
+            iy = y0 + t0 * dy0
+            return (ix, iy)
 
-            # Calcula as coordenadas do ponto de interseção (ICR)
-            icr_x = x0 + t0 * d0[0]
-            icr_y = y0 + t0 * d0[1]
+        # Calcula interseção das rodas dianteiras (1 e 3) e traseiras (0 e 2)
+        front_icr = intersection(wheels[1], wheels[3])
+        rear_icr  = intersection(wheels[0], wheels[2])
 
-            # Retorna o ponto de interseção como uma tupla (x, y)
-            return (icr_x, icr_y)
-
-        # Cálculo da interseção das rodas dianteiras (índices 1 e 3)
-        front_icr = computeIntersection(self.vehicle.wheels[1], self.vehicle.wheels[3])
-
-        # Cálculo da interseção das rodas traseiras (índices 0 e 2)
-        rear_icr = computeIntersection(self.vehicle.wheels[0], self.vehicle.wheels[2])
-
-        # Se não houver interseção, retorna None
-        if front_icr is None and rear_icr is None:
-            return None
-        elif front_icr is None:
-            return rear_icr
-        elif rear_icr is None:
+        if front_icr and rear_icr:
+            # Retorna a média dos dois pontos
+            return ((front_icr[0] + rear_icr[0]) / 2, (front_icr[1] + rear_icr[1]) / 2)
+        elif front_icr:
             return front_icr
-
-        # Se houver duas interseções, retorna a média entre elas como o ICR
+        elif rear_icr:
+            return rear_icr
         else:
-            icr_x = (front_icr[0] + rear_icr[0]) / 2
-            icr_y = (front_icr[1] + rear_icr[1]) / 2
-            return (icr_x, icr_y)
+            return None
 
     # Função que atualiza o desenho da trajetória de curvatura
     def update(self):
@@ -161,52 +134,20 @@ class Curvature:
         self.turtle.pendown()
         self.turtle.goto(icr)
 
-        #Calcula e desenha os raios médios das rodas da esquerda e direita
-        left_middle_radius = []  # Lista para armazenar os raios das rodas da esquerda
-        right_middle_radius = [] # Lista para armazenar os raios das rodas da direita
-
-        # Percorre todas as rodas do veículo
+        # Para cada roda, desenha um círculo individual com raio real a partir do ICR
         for wheel in self.vehicle.wheels:
+            wx, wy = wheel.getPosition()
+            dx = wx - icr[0]
+            dy = wy - icr[1]
+            r = math.sqrt(dx**2 + dy**2)
 
-            # Calcula a distância do ICR para cada roda
-            pos = wheel.getPosition()
-            dist = math.sqrt((pos[0] - icr[0])**2 + (pos[1] - icr[1])**2)
-
-            # Se a roda está à esquerda
-            if wheel.relative_position[0] < 0:
-                left_middle_radius.append(dist)
-
-            # Se a roda está à direita
-            elif wheel.relative_position[0] > 0:
-                right_middle_radius.append(dist)
-
-        # Se houver rodas à esquerda, desenha o círculo para a curva da esquerda
-        if left_middle_radius:
-
-            # Calcula o raio médio das rodas da esquerda
-            left_avg = sum(left_middle_radius) / len(left_middle_radius)
-
-            # Posiciona a tartaruga para desenhar
+            # Desenha o círculo da trajetória da roda, com centro no ICR e raio r
             self.turtle.penup()
-            self.turtle.goto(icr[0] + left_avg, icr[1])
-            self.turtle.setheading(90)
+            self.turtle.goto(icr[0], icr[1] - r)
+            self.turtle.setheading(0)
             self.turtle.pendown()
-            self.turtle.pencolor("grey")
-            self.turtle.circle(left_avg)
-
-        # Se houver rodas à direita, desenha o círculo para a curva da direita
-        if right_middle_radius:
-
-            # Calcula o raio médio das rodas da direita
-            right_avg = sum(right_middle_radius) / len(right_middle_radius)
-
-            # Posiciona a tartaruga para desenhar
-            self.turtle.penup()
-            self.turtle.goto(icr[0] + right_avg, icr[1])
-            self.turtle.setheading(90)
-            self.turtle.pendown()
-            self.turtle.pencolor("grey")
-            self.turtle.circle(right_avg)
+            self.turtle.pencolor("gray")
+            self.turtle.circle(r)
 
         # Restaura a cor original para eventuais atualizações futuras
         self.turtle.pencolor(self.base_color)
