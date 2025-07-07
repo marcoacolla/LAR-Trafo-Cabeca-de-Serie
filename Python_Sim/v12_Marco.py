@@ -35,7 +35,7 @@ def main():
     plataforma = Vehicle("Plataforma", "DarkGoldenrod1", (0, 0))
 
     # Lista de modos pelos quais o 'curve_mode' vai comutar
-    curvature_modes = ["straight", "curve", "straight", "diagonal","straight", "pivotal", "straight","straight_and_curve"]
+    curvature_modes = ["straight", "diagonal", "pivotal"]
     current_mode_index = 0
 
     press_start_time = {"A": None, "D": None}
@@ -52,7 +52,6 @@ def main():
             return
         plataforma.curvature.turtle.clear()
 
-        current_mode_index = (current_mode_index + 1) % len(curvature_modes)
         new_mode = mode
 
         angle_offset = 0  # reseta sempre ao trocar
@@ -65,33 +64,28 @@ def main():
         # Atualiza modo APENAS depois da transição (já feito na função)
         
         # Atualiza os gráficos
+        
         plataforma.curvature.update()
         turtle.update()
+
     # Callback que alterna para o próximo modo
     def toggleMode():
         nonlocal current_mode_index, angle_offset, is_transitioning
 
         if is_transitioning:
             return
-        plataforma.curvature.turtle.clear()
 
-        current_mode_index = (current_mode_index + 1) % len(curvature_modes)
-        new_mode = curvature_modes[current_mode_index]
+        next_index = (current_mode_index + 1) % len(curvature_modes)
+        next_mode = curvature_modes[next_index]
 
-        angle_offset = 0  # reseta sempre ao trocar
+        def goToNextMode():
+            nonlocal current_mode_index
+            current_mode_index = next_index
+            setMode(next_mode)
 
-        if new_mode in ["curve", "diagonal"]:
-            smoothSteeringTransition(new_mode, target_angle=angle_offset)
-        else:
-            smoothSteeringTransition(new_mode)
+        smoothSteeringTransition("straight", on_complete=goToNextMode)
 
-        # Atualiza modo APENAS depois da transição (já feito na função)
-        
-        # Atualiza os gráficos
-        plataforma.curvature.update()
-        turtle.update()
-
-    def smoothSteeringTransition(mode, target_angle=0, duration=300):
+    def smoothSteeringTransition(mode, target_angle=0, duration=300, on_complete=None):
         nonlocal is_transitioning
 
         is_transitioning = True
@@ -160,9 +154,10 @@ def main():
         def interpolate(step):
             nonlocal is_transitioning
             if step > steps:
-                plataforma.curve_mode = mode  # só muda o modo quando termina a animação
-                
+                plataforma.curve_mode = mode
                 is_transitioning = False
+                if on_complete:
+                    on_complete()  # <- chama aqui!
                 return
 
             for i, wheel in enumerate(plataforma.wheels):
@@ -219,6 +214,8 @@ def main():
             plataforma.steerWheels("diagonal", diagonal_angle=angle_offset)
             plataforma.curvature.update()
             turtle.update()
+        elif plataforma.curve_mode == "straight":
+            setMode("curve")
 
     def keyPressed_D():
         if plataforma.curve_mode == "curve" and not is_pressed["D"]:
@@ -231,6 +228,8 @@ def main():
             plataforma.steerWheels("diagonal", diagonal_angle=angle_offset)
             plataforma.curvature.update()
             turtle.update()
+        elif plataforma.curve_mode == "straight":
+            setMode("curve")
 
     def keyReleased_A():
         is_pressed["A"] = False
