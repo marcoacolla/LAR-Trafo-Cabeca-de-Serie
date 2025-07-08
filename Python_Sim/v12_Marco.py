@@ -64,7 +64,7 @@ def main():
 
         # Atualiza os gráficos
         
-        plataforma.curvature.update()
+        plataforma.curvature.update(angle_offset=angle_offset)
         turtle.update()
 
     # Callback que alterna para o próximo modo
@@ -170,7 +170,7 @@ def main():
 
             
             turtle.update()
-            plataforma.curvature.update()
+            plataforma.curvature.update(angle_offset=angle_offset)
             turtle.ontimer(lambda: interpolate(step + 1), interval)
 
         interpolate(1)
@@ -196,7 +196,7 @@ def main():
 
         if angle_offset > 100 or angle_offset < -200:
             setMode("straight")
-        plataforma.curvature.update()
+        plataforma.curvature.update(angle_offset=angle_offset)
         turtle.update()
 
         # Chama de novo daqui a 30ms se ainda estiver pressionado
@@ -211,7 +211,7 @@ def main():
             nonlocal angle_offset
             angle_offset += 1
             plataforma.steerWheels("diagonal", diagonal_angle=angle_offset)
-            plataforma.curvature.update()
+            plataforma.curvature.update(angle_offset=angle_offset)
             turtle.update()
         elif plataforma.curve_mode == "straight":
             setMode("curve")
@@ -225,7 +225,7 @@ def main():
             nonlocal angle_offset
             angle_offset -= 1
             plataforma.steerWheels("diagonal", diagonal_angle=angle_offset)
-            plataforma.curvature.update()
+            plataforma.curvature.update(angle_offset=angle_offset)
             turtle.update()
         elif plataforma.curve_mode == "straight":
             setMode("curve")
@@ -234,14 +234,14 @@ def main():
         plataforma.icr_bias = max(0, plataforma.icr_bias - 0.05)  # permite extrapolar até um pouco antes da traseira
         if plataforma.curve_mode == "curve":
             plataforma.steerWheels("curve", angle_offset=angle_offset, icr_bias=plataforma.icr_bias)
-            plataforma.curvature.update()
+            plataforma.curvature.update(angle_offset=angle_offset)
             turtle.update()
 
     def keyPressed_E():
         plataforma.icr_bias = min(1, plataforma.icr_bias + 0.05)  # extrapola até além da dianteira
         if plataforma.curve_mode == "curve":
             plataforma.steerWheels("curve", angle_offset=angle_offset, icr_bias=plataforma.icr_bias)
-            plataforma.curvature.update()
+            plataforma.curvature.update(angle_offset=angle_offset)
             turtle.update()
     def keyReleased_A():
         is_pressed["A"] = False
@@ -255,7 +255,7 @@ def main():
         plataforma.setPosition((0, 0))
         for wheel in plataforma.wheels:
                 wheel.setPosition(plataforma.getPosition())
-        plataforma.curvature.update()
+        plataforma.curvature.update(angle_offset=angle_offset)
         turtle.update()
 
     # Callback para andar para frente
@@ -263,6 +263,7 @@ def main():
 
         # Chama o novo método de movimento
         plataforma.makeMovement(direction, step=5.0)
+        plataforma.curvature.update(angle_offset=angle_offset)
 
         # Atualiza os gráficos
         turtle.update()

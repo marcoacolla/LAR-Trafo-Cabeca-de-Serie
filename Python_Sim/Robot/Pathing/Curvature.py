@@ -20,8 +20,9 @@ class Curvature:
         self.turtle.penup()
 
     # Calcula o Centro Instantâneo de Rotação com base na interseção das linhas de direção das rodas
-    def computeICR(self):
+    def computeICR(self, angle_offset=0):
         wheels = self.vehicle.wheels
+
         if self.vehicle.curve_mode == "curve":
             cx, cy = self.vehicle.getPosition()
             θ = math.radians(self.vehicle.getHeading())
@@ -33,7 +34,7 @@ class Curvature:
             base_y = cy + bias_offset * math.sin(perp_angle)
 
             # Usa o raio de curvatura (deve estar definido)
-            R = self.vehicle.curvature_radius
+            R = self.vehicle.curvature_radius + 10*angle_offset
 
             # Calcula o ICR a partir do ponto base deslocado, na direção do heading
             icr_x = base_x - R * math.cos(θ)
@@ -74,10 +75,10 @@ class Curvature:
             return None
 
     # Função que atualiza o desenho da trajetória de curvatura
-    def update(self):
+    def update(self, angle_offset=0):
 
         # Calcula o Centro Instantâneo de Rotação (ICR)
-        icr = self.computeICR()
+        icr = self.computeICR(angle_offset=angle_offset)
 
         # Ne não foi possível determinar o círculo, desenha as retas da trajetória
         if icr is None:

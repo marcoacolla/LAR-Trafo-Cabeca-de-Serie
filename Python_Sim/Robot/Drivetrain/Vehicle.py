@@ -23,6 +23,7 @@ class Vehicle:
         self.width = width   # Comprimento do objeto
         self.length = length # Largura do objeto
         self.icr_bias = 0.5
+        self.icr_global = None
         # Variáveis auxiliares para posicionamento das rodas
         half_length = self.length / 2 # Metade do comprimento do objeto
         half_width = self.width   / 2 # Metade da largura do objeto
@@ -132,7 +133,44 @@ class Vehicle:
             
         # Modo 'curve': rodas internas e externas com alpha e beta
         elif curve_mode == "curve":
+            # Usa o ICR atualizado da função já existente
+            icr_x, icr_y = self.curvature.computeICR(angle_offset=angle_offset)
+            self.icr_global = (icr_x, icr_y)
+
+            theta_v = math.radians(self.getHeading())
+            vx_v = math.cos(theta_v)
+            vy_v = math.sin(theta_v)
+
+            for wheel in self.wheels:
+                wx, wy = wheel.getPosition()
+                rx, ry = wx - icr_x, wy - icr_y  # vetor do ICR até a roda
+                ang_r = math.degrees(math.atan2(ry, rx))  # ângulo do raio
+
+                # Tangentes possíveis (±90° do raio)
+                cand1 = (ang_r + 90) % 360
+                cand2 = (ang_r - 90) % 360
+
+                # Vetores candidatos
+                vx1, vy1 = math.cos(math.radians(cand1)), math.sin(math.radians(cand1))
+                vx2, vy2 = math.cos(math.radians(cand2)), math.sin(math.radians(cand2))
+
+                # Produto escalar com a direção do veículo
+                dot1 = vx1 * vx_v + vy1 * vy_v
+                dot2 = vx2 * vx_v + vy2 * vy_v
+
+                # Escolhe o que aponta mais pra frente
+                tangent = cand1 if dot1 > dot2 else cand2
+
+                # Define o heading diretamente (sem +90/-90 fixo)
+                if wheel.name == f'{self.getName()}_COL_1_wheel' or wheel.name == f'{self.getName()}_COL_2_wheel':
+                    wheel.setHeading((tangent + 90) % 360)      # +90° → x-axis vira a tangente
+                else:
+                    wheel.setHeading((tangent - 90) % 360)
+
+
+            '''
             R = curvature_radius + 10 * angle_offset
+
             cx, cy = self.getPosition()
             theta_v = math.radians(self.getHeading())
 
@@ -140,16 +178,23 @@ class Vehicle:
             bias_offset = (0.5 - icr_bias) * self.length
             base_x = cx + bias_offset * math.cos(theta_v)
             base_y = cy + bias_offset * math.sin(theta_v)
+
+            self.curvature_radius = R  # Atualiza o raio na instância
+
+            
             icr_x = base_x - R * math.cos(theta_v)
             icr_y = base_y - R * math.sin(theta_v)
+            
 
             vx_v, vy_v = math.cos(theta_v), math.sin(theta_v)
 
             for wheel in self.wheels:
                 wx, wy = wheel.getPosition()
+
                 rx = wx - icr_x
                 ry = wy - icr_y
-                ang_r = math.degrees(math.atan2(ry, rx))
+
+                ang_r = math.degrees(math.atan2(ry, rx)) % 360
 
                 # Calcula as duas tangentes possíveis ao círculo
                 cand1 = (ang_r + 90) % 360
@@ -163,14 +208,18 @@ class Vehicle:
                 dot2 = vx2 * vx_v + vy2 * vy_v
 
                 tangent = cand1 if dot1 > dot2 else cand2
+                
+                
                 if wheel.name == f'{self.getName()}_COL_1_wheel' or wheel.name == f'{self.getName()}_COL_2_wheel':
                     wheel.setHeading((tangent + 90) % 360)      # +90° → x-axis vira a tangente
                 else:
                     wheel.setHeading((tangent - 90) % 360)
-                # Define o heading final da roda (já é a tangente certa)
+                '''
+                
+                
                 
 
-            self.curvature_radius = R  # Atualiza o raio na instância
+            
 
     # Atualiza o heading e a posição do veículo com base nos valores das rodas.
     def updatePositionFromWheels(self):
@@ -188,7 +237,6 @@ class Vehicle:
     
     #
     def makeMovement(self, direction, step=5.0):
-    
         if self.curve_mode == "straight":
             
             # Movimento em linha reta: deslocamento tangencial forward
@@ -270,7 +318,8 @@ class Vehicle:
         elif self.curve_mode == "curve":
 
             # Calcula o Centro Instantâneo de Rotação (ICR) com base na orientação das rodas
-            icr = self.curvature.computeICR()
+
+            icr = self.icr_global
 
             if icr is not None:
                 # Movimento curvo: o veículo gira em torno do ICR
@@ -314,7 +363,6 @@ class Vehicle:
 
             # Atualiza a posição de cada roda, usando a posição do veículo e considerando o deslocamento relativo
             for wheel in self.wheels:
-                print(wheel.getHeading())
                 wheel.setPosition(self.getPosition())
 
             # Atualiza o desenho da trajetória (curvatura) de forma gráfica
