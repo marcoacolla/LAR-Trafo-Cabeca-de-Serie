@@ -22,7 +22,25 @@ class Curvature:
     # Calcula o Centro Instantâneo de Rotação com base na interseção das linhas de direção das rodas
     def computeICR(self):
         wheels = self.vehicle.wheels
+        if self.vehicle.curve_mode == "curve":
+            cx, cy = self.vehicle.getPosition()
+            θ = math.radians(self.vehicle.getHeading())
 
+            # Desloca o ponto base ao longo do eixo Y local (largura)
+            perp_angle = θ + math.pi / 2  # 90 graus em radianos
+            bias_offset = (self.vehicle.icr_bias - 0.5) * self.vehicle.width
+            base_x = cx + bias_offset * math.cos(perp_angle)
+            base_y = cy + bias_offset * math.sin(perp_angle)
+
+            # Usa o raio de curvatura (deve estar definido)
+            R = self.vehicle.curvature_radius
+
+            # Calcula o ICR a partir do ponto base deslocado, na direção do heading
+            icr_x = base_x - R * math.cos(θ)
+            icr_y = base_y - R * math.sin(θ)
+
+            return (icr_x, icr_y)
+        
         def intersection(w1, w2):
             x0, y0 = w1.getPosition()
             theta0 = math.radians(w1.getHeading())
