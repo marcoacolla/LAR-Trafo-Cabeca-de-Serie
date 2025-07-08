@@ -114,12 +114,12 @@ def main():
                 ]
 
             elif mode == "curve":
-                icr = plataforma.curvature.computeICR()
-                if icr is None:
-                    return current_angles  # fallback se ICR não pôde ser determinado
-
+                R = 500 + 10 * target_angle
+                cx, cy = plataforma.getPosition()
                 theta_v = math.radians(plataforma.getHeading())
-                vx_v, vy_v = -math.sin(theta_v), math.cos(theta_v)
+                icr = (cx - R * math.cos(theta_v), cy - R * math.sin(theta_v))
+                plataforma.curvature_radius = R
+                vx_v, vy_v = math.cos(theta_v), math.sin(theta_v)
                 final = []
 
                 for wheel in plataforma.wheels:
@@ -138,7 +138,10 @@ def main():
 
                     tangent = cand1 if dot1 > dot2 else cand2
 
-                    final.append(tangent)
+                    if wheel.name.endswith("COL_1_wheel") or wheel.name.endswith("COL_2_wheel"):
+                        final.append((tangent + 90) % 360)
+                    else:
+                        final.append((tangent - 90) % 360)
 
                 return final
 

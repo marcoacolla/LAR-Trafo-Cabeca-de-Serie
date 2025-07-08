@@ -133,23 +133,29 @@ class Vehicle:
         # Modo 'curve': rodas internas e externas com alpha e beta
         elif curve_mode == "curve":
             R = curvature_radius + 10 * angle_offset
-            theta_v = math.radians(self.getHeading())
             cx, cy = self.getPosition()
+            theta_v = math.radians(self.getHeading())
 
-            # Posição do ICR
-            icr_x = cx - R * math.cos(theta_v)
-            icr_y = cy - R * math.sin(theta_v)
+            # Aplica deslocamento com base no bias
+            bias_offset = (0.5 - icr_bias) * self.length
+            base_x = cx + bias_offset * math.cos(theta_v)
+            base_y = cy + bias_offset * math.sin(theta_v)
+            icr_x = base_x - R * math.cos(theta_v)
+            icr_y = base_y - R * math.sin(theta_v)
 
             vx_v, vy_v = math.cos(theta_v), math.sin(theta_v)
 
             for wheel in self.wheels:
                 wx, wy = wheel.getPosition()
-                rx, ry = wx - icr_x, wy - icr_y
+                rx = wx - icr_x
+                ry = wy - icr_y
                 ang_r = math.degrees(math.atan2(ry, rx))
 
+                # Calcula as duas tangentes possíveis ao círculo
                 cand1 = (ang_r + 90) % 360
                 cand2 = (ang_r - 90) % 360
 
+                # Avalia qual tangente aponta mais na direção do veículo
                 vx1, vy1 = math.cos(math.radians(cand1)), math.sin(math.radians(cand1))
                 vx2, vy2 = math.cos(math.radians(cand2)), math.sin(math.radians(cand2))
 
@@ -157,7 +163,14 @@ class Vehicle:
                 dot2 = vx2 * vx_v + vy2 * vy_v
 
                 tangent = cand1 if dot1 > dot2 else cand2
-                wheel.setHeading(tangent)
+                if wheel.name == f'{self.getName()}_COL_1_wheel' or wheel.name == f'{self.getName()}_COL_2_wheel':
+                    wheel.setHeading((tangent + 90) % 360)      # +90° → x-axis vira a tangente
+                else:
+                    wheel.setHeading((tangent - 90) % 360)
+                # Define o heading final da roda (já é a tangente certa)
+                
+
+            self.curvature_radius = R  # Atualiza o raio na instância
 
     # Atualiza o heading e a posição do veículo com base nos valores das rodas.
     def updatePositionFromWheels(self):
