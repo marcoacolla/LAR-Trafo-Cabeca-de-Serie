@@ -28,6 +28,8 @@ class Vehicle:
         half_length = self.length / 2 # Metade do comprimento do objeto
         half_width = self.width   / 2 # Metade da largura do objeto
 
+        self.angular_limits = [-112.5, 135]
+
         # Inicialização da tartaruga que representa a instância da classe
         self.turtle = turtle.Turtle()
         self.turtle.pen(outline=8)
@@ -96,6 +98,33 @@ class Vehicle:
         self.fixed_axes.updateOrientation()
         self.moving_axes.updateOrientation()
 
+
+    def normalize_angle(self,wheel,angle):
+        """Retorna o ângulo no intervalo [-180, 180]"""
+        if wheel.name.endswith("COL_1_wheel") or wheel.name.endswith("COL_2_wheel"):
+            angle = (angle - 90) % 360 - 180
+        else:
+            angle = (angle + 90) % 360 - 180
+        return angle
+
+    def apply_steering_limits(self,desired_angle,wheel, forward_vector_angle):
+        """
+        Aplica os limites de esterçamento: se o ângulo ultrapassa o permitido,
+        gira a roda para o lado oposto e inverte o movimento.
+        """
+        aux = desired_angle - forward_vector_angle
+        delta = self.normalize_angle(wheel, aux)
+        print(aux)
+        if abs(delta) > self.angular_limits[1]:
+            # Inverter a direção da roda
+            corrected_angle = (desired_angle + 180) % 360
+            reverse = True
+        else:
+            corrected_angle = desired_angle
+            reverse = False
+
+        return corrected_angle, reverse
+
     def steerWheels(self, curve_mode, diagonal_angle=0, curvature_radius=500, angle_offset=1, icr_bias=0.5):
         
         # Modo 'straight': rodas todas alinhadas a 0°
@@ -159,14 +188,28 @@ class Vehicle:
                 dot2 = vx2 * vx_v + vy2 * vy_v
 
                 # Escolhe o que aponta mais pra frente
-                tangent = cand1 if dot1 > dot2 else cand2
+                #tangent = cand1 if dot1 > dot2 else cand2
 
+                desired_tangent = cand1 if dot1 > dot2 else cand2
+
+                corrected_tangent, should_reverse = self.apply_steering_limits(desired_tangent,wheel, self.getHeading())
+
+                # Aplicar heading considerando a roda (mesmo esquema anterior com nomes)
+                if wheel.name.endswith("COL_1_wheel") or wheel.name.endswith("COL_2_wheel"):
+                    wheel.setHeading((corrected_tangent + 90) % 360)
+                else:
+                    wheel.setHeading((corrected_tangent - 90) % 360)
+
+                # Armazene should_reverse se for necessário inverter sentido ao andar
+                wheel.should_reverse = should_reverse
+
+                '''
                 # Define o heading diretamente (sem +90/-90 fixo)
                 if wheel.name == f'{self.getName()}_COL_1_wheel' or wheel.name == f'{self.getName()}_COL_2_wheel':
                     wheel.setHeading((tangent + 90) % 360)      # +90° → x-axis vira a tangente
                 else:
                     wheel.setHeading((tangent - 90) % 360)
-
+                '''
 
             '''
             R = curvature_radius + 10 * angle_offset

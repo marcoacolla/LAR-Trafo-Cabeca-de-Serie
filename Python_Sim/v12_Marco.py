@@ -55,6 +55,7 @@ def main():
         new_mode = mode
 
         angle_offset = 0 # reseta sempre ao trocar
+        plataforma.icr_bias = .5
 
         if new_mode in ["curve", "diagonal"]:
             smoothSteeringTransition(new_mode, target_angle=angle_offset)
@@ -82,9 +83,9 @@ def main():
             current_mode_index = next_index
             setMode(next_mode)
 
-        smoothSteeringTransition("straight", on_complete=goToNextMode)
+        smoothSteeringTransition("straight",  on_complete=goToNextMode)
 
-    def smoothSteeringTransition(mode, target_angle=0, duration=300, on_complete=None):
+    def smoothSteeringTransition(mode, target_angle=0,radius=500, duration=300,prefer_clockwise=False, on_complete=None):
         nonlocal is_transitioning
 
         is_transitioning = True
@@ -114,7 +115,7 @@ def main():
                 ]
 
             elif mode == "curve":
-                R = 500 + 10 * target_angle
+                R = radius + 10 * target_angle
                 cx, cy = plataforma.getPosition()
                 theta_v = math.radians(plataforma.getHeading())
                 icr = (cx - R * math.cos(theta_v), cy - R * math.sin(theta_v))
@@ -162,9 +163,10 @@ def main():
             for i, wheel in enumerate(plataforma.wheels):
                 start = current_angles[i]
                 end = target_angles[i]
-
-                # Interpolação circular (leva em conta wraparound dos ângulos)
-                diff = (end - start + 540) % 360 - 180
+                
+                
+                diff = (end - start + 540) %360 - 180 
+                
                 interpolated = (start + diff * (step / steps)) % 360
                 wheel.setHeading(interpolated)
 
@@ -187,13 +189,14 @@ def main():
         duration = now - press_start_time[key]
         step = int(angle_step_base + duration * 3)
 
-        if key == "A":
-            angle_offset += step
-        elif key == "D":
-            angle_offset -= step
+        if key == "D":
+            angle_offset-=step
+
+        elif key == "A":
+            angle_offset = angle_offset + step
 
         plataforma.steerWheels("curve", angle_offset=angle_offset)
-
+        
         if angle_offset > 100 or angle_offset < -200:
             setMode("straight")
         plataforma.curvature.update(angle_offset=angle_offset)
@@ -252,6 +255,7 @@ def main():
         press_start_time["D"] = None
 
     def ResetVehicle():
+        setMode("straight")
         plataforma.setPosition((0, 0))
         for wheel in plataforma.wheels:
                 wheel.setPosition(plataforma.getPosition())
