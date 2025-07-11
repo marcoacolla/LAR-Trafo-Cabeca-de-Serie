@@ -28,7 +28,7 @@ class Vehicle:
         half_length = self.length / 2 # Metade do comprimento do objeto
         half_width = self.width   / 2 # Metade da largura do objeto
 
-        self.angular_limits = [-112.5, 135]
+        self.angular_limits = [-112.5, 120]
 
         # Inicialização da tartaruga que representa a instância da classe
         self.turtle = turtle.Turtle()
@@ -114,16 +114,21 @@ class Vehicle:
         """
         aux = desired_angle - forward_vector_angle
         delta = self.normalize_angle(wheel, aux)
-        print(aux)
+        print(desired_angle)
         if abs(delta) > self.angular_limits[1]:
             # Inverter a direção da roda
             corrected_angle = (desired_angle + 180) % 360
+
+            desired_angle = desired_angle - 180
+            delta = self.normalize_angle(wheel, aux)
+            
+
             reverse = True
         else:
             corrected_angle = desired_angle
             reverse = False
 
-        return corrected_angle, reverse
+        return corrected_angle, reverse, desired_angle
 
     def steerWheels(self, curve_mode, diagonal_angle=0, curvature_radius=500, angle_offset=1, icr_bias=0.5):
         
@@ -192,7 +197,15 @@ class Vehicle:
 
                 desired_tangent = cand1 if dot1 > dot2 else cand2
 
-                corrected_tangent, should_reverse = self.apply_steering_limits(desired_tangent,wheel, self.getHeading())
+                if wheel.current_steering_angle is not None:
+                    desired_angle_for_limit = desired_tangent
+                else:
+                    desired_angle_for_limit = desired_tangent
+
+                corrected_tangent, should_reverse, steering_input = self.apply_steering_limits(desired_angle_for_limit,wheel, self.getHeading())
+               
+                wheel.current_steering_angle = steering_input
+                wheel.should_reverse = should_reverse
 
                 # Aplicar heading considerando a roda (mesmo esquema anterior com nomes)
                 if wheel.name.endswith("COL_1_wheel") or wheel.name.endswith("COL_2_wheel"):
@@ -201,7 +214,7 @@ class Vehicle:
                     wheel.setHeading((corrected_tangent - 90) % 360)
 
                 # Armazene should_reverse se for necessário inverter sentido ao andar
-                wheel.should_reverse = should_reverse
+                
 
                 '''
                 # Define o heading diretamente (sem +90/-90 fixo)

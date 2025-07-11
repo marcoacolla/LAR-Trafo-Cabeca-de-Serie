@@ -18,6 +18,8 @@ class Wheel:
         self.width = width                                  # Largura do objeto
         self.length = length                                # Comprimento do objeto
         self.relative_position = (x_offset, y_offset)       # Deslocamento relativo ao centro do veículo
+
+        self.current_steering_angle = None
         self.should_reverse = False
 
         # Inicialização da tartaruga que representa a instância da classe

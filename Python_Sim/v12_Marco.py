@@ -85,7 +85,7 @@ def main():
 
         smoothSteeringTransition("straight",  on_complete=goToNextMode)
 
-    def smoothSteeringTransition(mode, target_angle=0,radius=500, duration=300,prefer_clockwise=False, on_complete=None):
+    def smoothSteeringTransition(mode, target_angle=0,radius=0, duration=300,prefer_clockwise=False, on_complete=None):
         nonlocal is_transitioning
 
         is_transitioning = True
