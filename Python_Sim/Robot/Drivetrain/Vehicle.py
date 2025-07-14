@@ -99,30 +99,31 @@ class Vehicle:
         self.moving_axes.updateOrientation()
 
 
-    def normalize_angle(self,wheel,angle):
+    def normalize_angle(self,wheel,theta):
         """Retorna o ângulo no intervalo [-180, 180]"""
-        if wheel.name.endswith("COL_1_wheel") or wheel.name.endswith("COL_2_wheel"):
-            angle = (angle - 90) % 360 - 180
-        else:
-            angle = (angle + 90) % 360 - 180
-        return angle
+        ang = (theta % 360)
+        rel = (ang - 0)  # 0 ainda é o topo
+        rel = -rel  # inverter sentido pra horário
+        if rel <= -180:
+            rel += 360
+        elif rel > 180:
+            rel -= 360
+        return rel
 
     def apply_steering_limits(self,desired_angle,wheel, forward_vector_angle):
         """
         Aplica os limites de esterçamento: se o ângulo ultrapassa o permitido,
         gira a roda para o lado oposto e inverte o movimento.
         """
-        aux = desired_angle - forward_vector_angle
-        delta = self.normalize_angle(wheel, aux)
-        print(desired_angle)
+        
+        delta = self.normalize_angle(wheel,self.wheels[0].getHeading())
+        print(self.wheels[0].getHeading())
         if abs(delta) > self.angular_limits[1]:
+            print("normalizado: %f" %delta)
             # Inverter a direção da roda
             corrected_angle = (desired_angle + 180) % 360
-
-            desired_angle = desired_angle - 180
-            delta = self.normalize_angle(wheel, aux)
+            #corrected_angle = desired_angle
             
-
             reverse = True
         else:
             corrected_angle = desired_angle
@@ -202,9 +203,9 @@ class Vehicle:
                 else:
                     desired_angle_for_limit = desired_tangent
 
-                corrected_tangent, should_reverse, steering_input = self.apply_steering_limits(desired_angle_for_limit,wheel, self.getHeading())
-               
-                wheel.current_steering_angle = steering_input
+                corrected_tangent, should_reverse, updated_desired = self.apply_steering_limits(desired_angle_for_limit,wheel, self.getHeading())
+                
+                wheel.current_steering_angle = updated_desired
                 wheel.should_reverse = should_reverse
 
                 # Aplicar heading considerando a roda (mesmo esquema anterior com nomes)

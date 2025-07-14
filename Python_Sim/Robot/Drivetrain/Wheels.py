@@ -21,6 +21,7 @@ class Wheel:
 
         self.current_steering_angle = None
         self.should_reverse = False
+        self.last_desired_angle = None
 
         # Inicialização da tartaruga que representa a instância da classe
         self.turtle = turtle.Turtle()
