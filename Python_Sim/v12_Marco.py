@@ -157,6 +157,7 @@ def main():
                 plataforma.curve_mode = mode
                 is_transitioning = False
                 if on_complete:
+                    plataforma.curvature.update(angle_offset=angle_offset)
                     on_complete()  # <- chama aqui!
                 return
 
@@ -172,7 +173,8 @@ def main():
 
             
             turtle.update()
-            plataforma.curvature.update(angle_offset=angle_offset)
+            if not is_transitioning:
+                plataforma.curvature.update(angle_offset=angle_offset)
             turtle.ontimer(lambda: interpolate(step + 1), interval)
 
         interpolate(1)
@@ -188,12 +190,22 @@ def main():
         now = time.time()
         duration = now - press_start_time[key]
         step = int(angle_step_base + duration * 3)
-
+        
         if key == "D":
-            angle_offset-=step
-
+            '''
+            if angle_offset == 0:
+                angle_offset = -8
+            '''
+            next_step = angle_offset - step
         elif key == "A":
-            angle_offset = angle_offset + step
+            '''
+            if angle_offset == 0:
+                angle_offset = 8
+            '''
+            next_step = angle_offset + step
+
+        ##if next_step >= plataforma.icr_curve_limit or next_step <= -plataforma.icr_curve_limit:
+        angle_offset = next_step
 
         plataforma.steerWheels("curve", angle_offset=angle_offset)
         

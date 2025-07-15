@@ -19,6 +19,9 @@ class Curvature:
         self.turtle.pensize(2)
         self.turtle.penup()
 
+    def clear(self):
+        self.turtle.clear()
+    
     # Calcula o Centro Instantâneo de Rotação com base na interseção das linhas de direção das rodas
     def computeICR(self, angle_offset=0):
         wheels = self.vehicle.wheels
