@@ -28,7 +28,7 @@ class Vehicle:
         half_length = self.length / 2 # Metade do comprimento do objeto
         half_width = self.width   / 2 # Metade da largura do objeto
 
-        self.icr_curve_limit = 8
+        #self._freeze_icr = False
         
         
 
@@ -119,32 +119,23 @@ class Vehicle:
         """
         
         rel_angle = self.normalize_angle((desired_angle - self.getHeading()))
-        
-        #print(self.wheels[0].getHeading())
-        #print(self.normalize_angle(self.wheels[0].getHeading()))
         angular_lim = wheel.angular_limits
-        print(self.wheels[0].should_reverse)
         if wheel.should_reverse:
-            if wheel.name.endswith("COL_1_wheel") or wheel.name.endswith("COL_2_wheel"):
-                angular_lim = angular_lim - 90
-            else:
-                angular_lim = angular_lim - 90
+            angular_lim = angular_lim - 90
 
             if abs(rel_angle) < angular_lim:
-                # Inverte o heading e indica que a roda deve andar ao contrário
                 corrected_angle = desired_angle
-                reverse = not wheel.should_reverse
+                reverse = False
             else:
                 corrected_angle = (desired_angle + 180) % 360
-                reverse = wheel.should_reverse
+                reverse = True
         else:
             if abs(rel_angle) > angular_lim:
-                # Inverte o heading e indica que a roda deve andar ao contrário
                 corrected_angle = (desired_angle + 180) % 360
-                reverse = not wheel.should_reverse
+                reverse = True
             else:
                 corrected_angle = desired_angle
-                reverse = wheel.should_reverse
+                reverse = False
 
         return corrected_angle, reverse, desired_angle
 
@@ -186,7 +177,10 @@ class Vehicle:
         # Modo 'curve': rodas internas e externas com alpha e beta
         elif curve_mode == "curve":
             # Usa o ICR atualizado da função já existente
-            icr_x, icr_y = self.curvature.computeICR(angle_offset=angle_offset)
+            icr = self.curvature.computeICR(angle_offset=angle_offset)
+            if icr is None:
+                return
+            icr_x, icr_y = icr
             self.icr_global = (icr_x, icr_y)
 
             theta_v = math.radians(self.getHeading())
@@ -388,8 +382,7 @@ class Vehicle:
 
         elif self.curve_mode == "curve":
 
-            # Calcula o Centro Instantâneo de Rotação (ICR) com base na orientação das rodas
-
+            # Calcula o Centro Instantâneo de Rotação (ICR) com base na orientação das roda
             icr = self.icr_global
 
             if icr is not None:

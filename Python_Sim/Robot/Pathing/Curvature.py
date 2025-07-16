@@ -21,6 +21,7 @@ class Curvature:
 
     def clear(self):
         self.turtle.clear()
+        turtle.update()
     
     # Calcula o Centro Instantâneo de Rotação com base na interseção das linhas de direção das rodas
     def computeICR(self, angle_offset=0):
@@ -37,7 +38,7 @@ class Curvature:
             base_y = cy + bias_offset * math.sin(perp_angle)
 
             # Usa o raio de curvatura (deve estar definido)
-            R = self.vehicle.curvature_radius + 10*angle_offset
+            R = 10*angle_offset
 
             # Calcula o ICR a partir do ponto base deslocado, na direção do heading
             icr_x = base_x - R * math.cos(θ)
