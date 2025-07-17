@@ -23,7 +23,7 @@ class Wheel:
         self.should_reverse = False
         self.last_desired_angle = None
 
-        self.angular_limits = 120
+        self.angular_limits = 130
         
         # Inicialização da tartaruga que representa a instância da classe
         self.turtle = turtle.Turtle()

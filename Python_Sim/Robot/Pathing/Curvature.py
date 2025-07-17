@@ -27,7 +27,7 @@ class Curvature:
     def computeICR(self, angle_offset=0):
         wheels = self.vehicle.wheels
 
-        if self.vehicle.curve_mode == "curve":
+        if self.vehicle.curve_mode == "curve" or self.vehicle.curve_mode == "pivotal":
             cx, cy = self.vehicle.getPosition()
             θ = math.radians(self.vehicle.getHeading())
 

@@ -46,7 +46,7 @@ def main():
     icr_curve_limit = 8
 
     # Offset de esterçamento para o modo 'curve'
-    angle_offset = 0
+    angle_offset = 100
     def setMode(mode, curveStart=0):
         nonlocal current_mode_index, angle_offset, is_transitioning
 
@@ -59,9 +59,15 @@ def main():
         angle_offset = curveStart # reseta sempre ao trocar
 
         plataforma.icr_bias = .5
-
-        if new_mode in ["curve", "diagonal"]:
-            smoothSteeringTransition(new_mode, target_angle=angle_offset)
+        def on_completion():
+            if new_mode == "pivotal":
+                plataforma.steerWheels("curve", angle_offset=angle_offset)
+            else:
+                return
+        
+        if new_mode in ["curve", "diagonal", "pivotal"]:
+            smoothSteeringTransition(new_mode, target_angle=angle_offset, on_complete=on_completion)
+                
         else:
             smoothSteeringTransition(new_mode)
 
@@ -72,7 +78,7 @@ def main():
 
     # Callback que alterna para o próximo modo
     def toggleMode():
-        nonlocal current_mode_index, angle_offset, is_transitioning
+        nonlocal current_mode_index, is_transitioning
 
         if is_transitioning:
             return
@@ -87,7 +93,7 @@ def main():
 
         smoothSteeringTransition("straight",  on_complete=goToNextMode)
 
-    def smoothSteeringTransition(mode, target_angle=0, radius=500, duration=100, prefer_clockwise=False, on_complete=None):
+    def smoothSteeringTransition(mode, target_angle=0, duration=100, prefer_clockwise=False, on_complete=None):
         nonlocal is_transitioning
         is_transitioning = True
 
@@ -100,9 +106,7 @@ def main():
         plataforma.steerWheels(
             curve_mode=mode,
             diagonal_angle=target_angle,
-            curvature_radius=radius,
-            angle_offset=target_angle,
-            icr_bias=plataforma.icr_bias
+            angle_offset=target_angle
         )
 
         # Coleta os headings-alvo atualizados pelas rodas
@@ -143,9 +147,8 @@ def main():
     def updateAngleSpeed(key):
         nonlocal angle_offset, is_transitioning
 
-        if plataforma.curve_mode != "curve" or not is_pressed[key] or is_transitioning:
+        if (plataforma.curve_mode != "curve" and plataforma.curve_mode != "pivotal") or not is_pressed[key] or is_transitioning:
             return
-
         now = time.time()
         duration = now - press_start_time[key]
         step = int(angle_step_base + duration * 3)
@@ -155,11 +158,14 @@ def main():
         elif key == "A":
             next_step = angle_offset - step
 
-        if next_step >= icr_curve_limit or next_step <= -icr_curve_limit:
-            angle_offset = next_step
+        if plataforma.curve_mode == "curve":
+            if next_step >= icr_curve_limit or next_step <= -icr_curve_limit:
+                angle_offset = next_step
+        elif plataforma.curve_mode == "pivotal":
+            if next_step <= icr_curve_limit and next_step >= -icr_curve_limit:
+                angle_offset = next_step
 
         plataforma.steerWheels("curve", angle_offset=angle_offset)
-        print(angle_offset)
         if angle_offset > 220 or angle_offset < -220:
             setMode("straight")
         else:
@@ -170,7 +176,7 @@ def main():
         turtle.ontimer(lambda: updateAngleSpeed(key), 30)
 
     def keyPressed_A():
-        if plataforma.curve_mode == "curve" and not is_pressed["A"]:
+        if (plataforma.curve_mode == "curve" or plataforma.curve_mode == "pivotal") and not is_pressed["A"]:
             press_start_time["A"] = time.time()
             is_pressed["A"] = True
             updateAngleSpeed("A")
@@ -184,7 +190,7 @@ def main():
             setMode("curve", init_angle_offset)
 
     def keyPressed_D():
-        if plataforma.curve_mode == "curve" and not is_pressed["D"]:
+        if (plataforma.curve_mode == "curve" or plataforma.curve_mode == "pivotal") and not is_pressed["D"]:
             press_start_time["D"] = time.time()
             is_pressed["D"] = True
             updateAngleSpeed("D")
@@ -199,14 +205,14 @@ def main():
 
     def keyPressed_Q():
         plataforma.icr_bias = max(0, plataforma.icr_bias - 0.05)  # permite extrapolar até um pouco antes da traseira
-        if plataforma.curve_mode == "curve":
+        if plataforma.curve_mode == "curve" or plataforma.curve_mode == "pivotal":
             plataforma.steerWheels("curve", angle_offset=angle_offset, icr_bias=plataforma.icr_bias)
             plataforma.curvature.update(angle_offset=angle_offset)
             turtle.update()
 
     def keyPressed_E():
         plataforma.icr_bias = min(1, plataforma.icr_bias + 0.05)  # extrapola até além da dianteira
-        if plataforma.curve_mode == "curve":
+        if plataforma.curve_mode == "curve" or plataforma.curve_mode == "pivotal":
             plataforma.steerWheels("curve", angle_offset=angle_offset, icr_bias=plataforma.icr_bias)
             plataforma.curvature.update(angle_offset=angle_offset)
             turtle.update()
@@ -228,7 +234,6 @@ def main():
 
     # Callback para andar para frente
     def callMovement(direction):
-
         # Chama o novo método de movimento
         plataforma.makeMovement(direction, step=5.0)
         plataforma.curvature.update(angle_offset=angle_offset)

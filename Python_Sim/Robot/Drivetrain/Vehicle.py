@@ -117,30 +117,32 @@ class Vehicle:
         Aplica os limites de esterçamento: se o ângulo ultrapassa o permitido,
         gira a roda para o lado oposto e inverte o movimento.
         """
-        
-        rel_angle = self.normalize_angle((desired_angle - self.getHeading()))
-        angular_lim = wheel.angular_limits
-        if wheel.should_reverse:
-            angular_lim = angular_lim - 90
-
-            if abs(rel_angle) < angular_lim:
-                corrected_angle = desired_angle
-                reverse = False
-            else:
-                corrected_angle = (desired_angle + 180) % 360
-                reverse = True
+        if self.curve_mode == "pivotal":
+            return desired_angle, False, desired_angle
         else:
-            if abs(rel_angle) > angular_lim:
-                corrected_angle = (desired_angle + 180) % 360
-                reverse = True
+            rel_angle = self.normalize_angle((desired_angle - self.getHeading()))
+            angular_lim = wheel.angular_limits
+            if wheel.should_reverse:
+                angular_lim = angular_lim - 90
+
+                if abs(rel_angle) < angular_lim:
+                    corrected_angle = desired_angle
+                    reverse = False
+                else:
+                    corrected_angle = (desired_angle + 180) % 360
+                    reverse = True
             else:
-                corrected_angle = desired_angle
-                reverse = False
+                if abs(rel_angle) > angular_lim:
+                    corrected_angle = (desired_angle + 180) % 360
+                    reverse = True
+                else:
+                    corrected_angle = desired_angle
+                    reverse = False
 
-        return corrected_angle, reverse, desired_angle
+            return corrected_angle, reverse, desired_angle
 
-    def steerWheels(self, curve_mode, diagonal_angle=0, curvature_radius=500, angle_offset=1, icr_bias=0.5):
-        
+    def steerWheels(self, curve_mode, diagonal_angle=0, angle_offset=1, icr_bias=0.5):
+        #print(f"[DEBUG] steerWheels modo={curve_mode} | offset={angle_offset}")   
         # Modo 'straight': rodas todas alinhadas a 0°
         if curve_mode == "straight":
 
@@ -162,8 +164,7 @@ class Vehicle:
             self.wheels[1].setHeading(steering_angle)
             self.wheels[2].setHeading(steering_angle)
             self.wheels[3].setHeading(steering_angle)
-
-        # Modo 'pivotal': robô gira em torno do próprio eixo
+            
         elif curve_mode == "pivotal":
             
             # Atualiza o ângulo com base na fórmula
@@ -302,10 +303,11 @@ class Vehicle:
     
     #
     def makeMovement(self, direction, step=5.0):
+        #print(f"[DEBUG] ICR: {self.icr_global}, Mode: {self.curve_mode}")
         if self.curve_mode == "straight":
             
             # Movimento em linha reta: deslocamento tangencial forward
-            if direction == "forward":
+            if direction == "forward": 
                 heading_rad = math.radians(self.getHeading())
                 dx = step * - math.sin(heading_rad)
                 dy = step * math.cos(heading_rad)
@@ -353,38 +355,11 @@ class Vehicle:
             # Atualiza o desenho da trajetória (curvatura) de forma gráfica
             self.curvature.update()
 
-        # Movimento pivotal: o veículo gira em torno de seu próprio eixo
-        elif self.curve_mode == "pivotal":
-            
-            # Sentido anti-horário
-            if direction == "forward":
-                dtheta = -step / ROBOT_LENGTH
-            # Sentido horário
-            elif direction == "backward":
-                dtheta = step / ROBOT_LENGTH
-            
-            # Atualiza o heading do veículo (em graus), garantindo a rotação ao redor de seu próprio eixo
-            dtheta_deg = math.degrees(dtheta)
-            new_heading = (self.getHeading() + dtheta_deg) % 360
 
-            self.setHeading(new_heading)
-
-            # Propaga a mudança de heading para cada roda
-            for wheel in self.wheels:
-                wheel.setHeading((wheel.getHeading() + dtheta_deg) % 360)
-
-            # Atualiza a posição de cada roda
-            for wheel in self.wheels:
-                wheel.setPosition(self.getPosition())
-
-            # Atualiza o desenho da trajetória (curvatura) de forma gráfica
-            self.curvature.update()
-
-        elif self.curve_mode == "curve":
+        elif self.curve_mode == "curve" or self.curve_mode == "pivotal":
 
             # Calcula o Centro Instantâneo de Rotação (ICR) com base na orientação das roda
             icr = self.icr_global
-
             if icr is not None:
                 # Movimento curvo: o veículo gira em torno do ICR
                 icr_x, icr_y = icr
