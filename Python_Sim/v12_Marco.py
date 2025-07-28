@@ -15,10 +15,12 @@ from Robot.Pathing.Axis import Axis
 from Robot.Pathing.Arrow import Arrow
 from Robot.Pathing.Axes import Axes
 
+
 from Robot.Drivetrain.Wheels import Wheel
 from Robot.Drivetrain.Vehicle import Vehicle
 
 from Application.Screen import Screen
+from Application.UI import UI
 
 import GVL
 
@@ -31,7 +33,9 @@ def main():
     is_transitioning = False
     
     # Cria a tela e o veículo
+    
     screen = Screen(title="Projeto TRAFO: Simulação de Veículo 4WS")
+    ui = UI(screen)
     plataforma = Vehicle("Plataforma", "DarkGoldenrod1", (0, 0))
 
     # Lista de modos pelos quais o 'curve_mode' vai comutar
@@ -90,6 +94,7 @@ def main():
             nonlocal current_mode_index
             current_mode_index = next_index
             setMode(next_mode)
+            ui.update_mode_display(next_mode)
 
         smoothSteeringTransition("straight",  on_complete=goToNextMode)
 
@@ -117,6 +122,7 @@ def main():
 
             if step > steps:
                 plataforma.curve_mode = mode
+                #ui.update_mode_display(mode)
                 is_transitioning = False
                 if on_complete:
                     on_complete()
@@ -259,6 +265,7 @@ def main():
 
     # Inicializa o veículo no modo "straight"
     plataforma.curve_mode = "straight"
+    ui.update_mode_display("straight")
     plataforma.steerWheels("straight")
 
     # Coloca o veículo em posição inicial
