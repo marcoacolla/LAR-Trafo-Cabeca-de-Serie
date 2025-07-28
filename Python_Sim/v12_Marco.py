@@ -39,7 +39,7 @@ def main():
     plataforma = Vehicle("Plataforma", "DarkGoldenrod1", (0, 0))
 
     # Lista de modos pelos quais o 'curve_mode' vai comutar
-    curvature_modes = ["straight", "diagonal", "pivotal"]
+    curvature_modes = ["straight", "diagonal", "pivotal", "içamento"]
     current_mode_index = 0
 
     press_start_time = {"A": None, "D": None}
@@ -231,6 +231,7 @@ def main():
         press_start_time["D"] = None
 
     def ResetVehicle():
+        ui.update_mode_display("straight")
         setMode("straight")
         plataforma.setPosition((0, 0))
         for wheel in plataforma.wheels:
@@ -257,6 +258,9 @@ def main():
     turtle.onkeypress(keyPressed_A, "a")
     turtle.onkeyrelease(keyReleased_A, "a")
 
+    turtle.onkeypress(ui.draw_break, "b")
+    turtle.onkeyrelease(ui.clear_break, "b")
+
     turtle.onkeypress(keyPressed_D, "d")
     turtle.onkeyrelease(keyReleased_D, "d")
 
@@ -265,6 +269,8 @@ def main():
 
     # Inicializa o veículo no modo "straight"
     plataforma.curve_mode = "straight"
+    ui.draw_box()
+    ui.draw_menubar()
     ui.update_mode_display("straight")
     plataforma.steerWheels("straight")
 
