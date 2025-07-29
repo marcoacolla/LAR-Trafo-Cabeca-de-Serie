@@ -244,6 +244,7 @@ def main():
         # Chama o novo método de movimento
         plataforma.makeMovement(direction, step=5.0)
         plataforma.curvature.update(angle_offset=angle_offset)
+        ui.clear_break()
 
         # Atualiza os gráficos
         turtle.update()
@@ -258,8 +259,8 @@ def main():
     turtle.onkeypress(keyPressed_A, "a")
     turtle.onkeyrelease(keyReleased_A, "a")
 
-    turtle.onkeypress(ui.draw_break, "b")
-    turtle.onkeyrelease(ui.clear_break, "b")
+    turtle.onkeyrelease(ui.draw_break, "w")
+    turtle.onkeyrelease(ui.draw_break, "s")
 
     turtle.onkeypress(keyPressed_D, "d")
     turtle.onkeyrelease(keyReleased_D, "d")
@@ -271,6 +272,7 @@ def main():
     plataforma.curve_mode = "straight"
     ui.draw_box()
     ui.draw_menubar()
+    ui.draw_break()
     ui.update_mode_display("straight")
     plataforma.steerWheels("straight")
 
