@@ -154,46 +154,65 @@ def main():
         rawJSValues = joystick.getJoystickValues()
         usedJSValue = [0,0,0,0]
         if plataforma.curve_mode == "straight":
-            if rawJSValues[0] >= GVL.CONTROLLER_DEADZONE or rawJSValues[0] <= -GVL.CONTROLLER_DEADZONE or rawJSValues[1] >= GVL.CONTROLLER_DEADZONE or rawJSValues[1] <= -GVL.CONTROLLER_DEADZONE:
+            if rawJSValues[2] >= GVL.CONTROLLER_DEADZONE or rawJSValues[2] <= -GVL.CONTROLLER_DEADZONE or rawJSValues[3] >= GVL.CONTROLLER_DEADZONE or rawJSValues[3] <= -GVL.CONTROLLER_DEADZONE:
                 setMode("curve")
         elif plataforma.curve_mode == "curve":
-            if rawJSValues[0] <= GVL.CONTROLLER_DEADZONE and rawJSValues[0] >= -GVL.CONTROLLER_DEADZONE and rawJSValues[1] <= GVL.CONTROLLER_DEADZONE and rawJSValues[1] >= -GVL.CONTROLLER_DEADZONE:
+            if rawJSValues[2] <= GVL.CONTROLLER_DEADZONE and rawJSValues[2] >= -GVL.CONTROLLER_DEADZONE and rawJSValues[3] <= GVL.CONTROLLER_DEADZONE and rawJSValues[3] >= -GVL.CONTROLLER_DEADZONE:
                 setMode("straight")
             else:
                 if plataforma.curve_mode == "curve":
-                    if rawJSValues[0] <= 0:
-                        usedJSValue[0] = max((-math.sqrt(2)/2), rawJSValues[0])
-                        angle_offset = GVL.CURVE_MAX_RADIUS + (GVL.CURVE_MAX_RADIUS - GVL.CURVE_MIN_RADIUS)*math.sqrt(2)*(usedJSValue[0])
+                    if rawJSValues[2] <= 0:
+                        usedJSValue[2] = max((-math.sqrt(2)/2), rawJSValues[2])
+                        angle_offset = GVL.CURVE_MAX_RADIUS + (GVL.CURVE_MAX_RADIUS - GVL.CURVE_MIN_RADIUS)*math.sqrt(2)*(usedJSValue[2])
                     else:
-                        usedJSValue[0] = min((math.sqrt(2)/2), rawJSValues[0])
-                        angle_offset = -GVL.CURVE_MAX_RADIUS + (GVL.CURVE_MAX_RADIUS - GVL.CURVE_MIN_RADIUS)*math.sqrt(2)*(usedJSValue[0])
-                    if rawJSValues[1] <= 0:
-                        usedJSValue[1] = max(-math.sqrt(2)/2, rawJSValues[1])
+                        usedJSValue[2] = min((math.sqrt(2)/2), rawJSValues[2])
+                        angle_offset = -GVL.CURVE_MAX_RADIUS + (GVL.CURVE_MAX_RADIUS - GVL.CURVE_MIN_RADIUS)*math.sqrt(2)*(usedJSValue[2])
+                    if rawJSValues[3] <= 0:
+                        usedJSValue[3] = max(-math.sqrt(2)/2, rawJSValues[3])
                     else:
-                        usedJSValue[1] = min(math.sqrt(2)/2, rawJSValues[1])
+                        usedJSValue[3] = min(math.sqrt(2)/2, rawJSValues[3])
 
-                    plataforma.icr_bias = .5 - .5*math.sqrt(2)*(usedJSValue[1])
-                    print(rawJSValues[0])
+                    plataforma.icr_bias = .5 - .5*math.sqrt(2)*(usedJSValue[3])
+                    #print(rawJSValues[2])
                     plataforma.steerWheels("curve", angle_offset=angle_offset)
         elif plataforma.curve_mode == "pivotal":
-            if rawJSValues[0] <= GVL.CONTROLLER_DEADZONE and rawJSValues[0] >= -GVL.CONTROLLER_DEADZONE and rawJSValues[1] <= GVL.CONTROLLER_DEADZONE and rawJSValues[1] >= -GVL.CONTROLLER_DEADZONE:
+            if rawJSValues[2] <= GVL.CONTROLLER_DEADZONE and rawJSValues[2] >= -GVL.CONTROLLER_DEADZONE and rawJSValues[3] <= GVL.CONTROLLER_DEADZONE and rawJSValues[3] >= -GVL.CONTROLLER_DEADZONE:
                 angle_offset=0
                 plataforma.icr_bias = .5
             else:
-                if rawJSValues[0] <= 0:
-                    usedJSValue[0] = max((-math.sqrt(2)/2), rawJSValues[0])
-                    angle_offset = +.5 - 7.5*math.sqrt(2)*(usedJSValue[0])
+                if rawJSValues[2] <= 0:
+                    usedJSValue[2] = max((-math.sqrt(2)/2), rawJSValues[2])
+                    angle_offset = +.5 - 7.5*math.sqrt(2)*(usedJSValue[2])
                 else:
-                    usedJSValue[0] = min((math.sqrt(2)/2), rawJSValues[0])
-                    angle_offset = -.5 - 7.5*math.sqrt(2)*(usedJSValue[0])
-                if rawJSValues[1] <= 0:
-                    usedJSValue[1] = max(-math.sqrt(2)/2, rawJSValues[1])
+                    usedJSValue[2] = min((math.sqrt(2)/2), rawJSValues[2])
+                    angle_offset = -.5 - 7.5*math.sqrt(2)*(usedJSValue[2])
+                if rawJSValues[3] <= 0:
+                    usedJSValue[3] = max(-math.sqrt(2)/2, rawJSValues[3])
                 else:
-                    usedJSValue[1] = min(math.sqrt(2)/2, rawJSValues[1])
+                    usedJSValue[3] = min(math.sqrt(2)/2, rawJSValues[3])
 
-                plataforma.icr_bias = .5 - .5*math.sqrt(2)*(usedJSValue[1])
+                plataforma.icr_bias = .5 - .5*math.sqrt(2)*(usedJSValue[3])
                 #print(rawJSValues[0])
-                plataforma.steerWheels("curve", angle_offset=angle_offset)
+            
+            
+            plataforma.steerWheels("curve", angle_offset=angle_offset)
+        elif plataforma.curve_mode == "diagonal":
+            if not (rawJSValues[2] <= GVL.CONTROLLER_DEADZONE and rawJSValues[2] >= -GVL.CONTROLLER_DEADZONE and rawJSValues[3] <= GVL.CONTROLLER_DEADZONE and rawJSValues[3] >= -GVL.CONTROLLER_DEADZONE):
+                angle_offset-=10*rawJSValues[2]
+            plataforma.steerWheels("diagonal", diagonal_angle=angle_offset)
+
+        if not(rawJSValues[0] <= GVL.CONTROLLER_DEADZONE and rawJSValues[0] >= -GVL.CONTROLLER_DEADZONE and rawJSValues[1] <= GVL.CONTROLLER_DEADZONE and rawJSValues[1] >= -GVL.CONTROLLER_DEADZONE):
+
+            if plataforma.curve_mode == "pivotal":
+                stepValue = rawJSValues[0]
+            else:
+                stepValue = rawJSValues[1]
+                
+            if  stepValue <= 0:
+                callMovement("forward", GVL.STEP*abs(stepValue))
+            else:
+                callMovement("backward", GVL.STEP*abs(stepValue))
+            
         plataforma.curvature.update(angle_offset=angle_offset)
         turtle.update()
         turtle.ontimer(joystickAngleOffsetUpdate, GVL.CONTROLLER_TICK)
@@ -289,9 +308,9 @@ def main():
         turtle.update()
 
     # Callback para andar para frente
-    def callMovement(direction):
+    def callMovement(direction,step=5.0):
         # Chama o novo método de movimento
-        plataforma.makeMovement(direction, step=5.0)
+        plataforma.makeMovement(direction, step=step)
         plataforma.curvature.update(angle_offset=angle_offset)
         ui.clear_break()
 

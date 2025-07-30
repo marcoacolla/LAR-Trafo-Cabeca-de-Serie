@@ -19,9 +19,7 @@ class Joystick:
         self.eixo_esquerdo_y = self.joystick.get_axis(1)  # Eixo Y do analógico esquerdo
 
         self.eixo_direito_x = self.joystick.get_axis(2)  # Eixo X do analógico direito
-        self.eixo_direito_y = self.joystick.get_axis(5)  # Eixo Y do analógico direito (em alguns modelos é o 5)
-
-        #print(eixo_esquerdo_x)
+        self.eixo_direito_y = self.joystick.get_axis(3)  # Eixo Y do analógico direito (em alguns modelos é o 5)
         # Aqui você pode mover seu robô, por exemplo:
         # turtle.setheading(eixo_x * 180)
         # turtle.forward(eixo_y * 5)
