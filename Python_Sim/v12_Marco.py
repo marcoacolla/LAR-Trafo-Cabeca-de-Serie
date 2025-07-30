@@ -99,11 +99,11 @@ def main():
 
         smoothSteeringTransition("straight",  on_complete=goToNextMode)
 
-    def smoothSteeringTransition(mode, target_angle=0, duration=100, prefer_clockwise=False, on_complete=None):
+    def smoothSteeringTransition(mode, target_angle=0, duration=10, prefer_clockwise=False, on_complete=None):
         nonlocal is_transitioning
         is_transitioning = True
 
-        steps = 100
+        steps = 10
         interval = int(duration / steps)
 
         current_angles = [wheel.getHeading() for wheel in plataforma.wheels]
@@ -149,6 +149,54 @@ def main():
 
         interpolate(1)
 
+    def joystickAngleOffsetUpdate():
+        nonlocal angle_offset
+        rawJSValues = joystick.getJoystickValues()
+        usedJSValue = [0,0,0,0]
+        if plataforma.curve_mode == "straight":
+            if rawJSValues[0] >= GVL.CONTROLLER_DEADZONE or rawJSValues[0] <= -GVL.CONTROLLER_DEADZONE or rawJSValues[1] >= GVL.CONTROLLER_DEADZONE or rawJSValues[1] <= -GVL.CONTROLLER_DEADZONE:
+                setMode("curve")
+        elif plataforma.curve_mode == "curve":
+            if rawJSValues[0] <= GVL.CONTROLLER_DEADZONE and rawJSValues[0] >= -GVL.CONTROLLER_DEADZONE and rawJSValues[1] <= GVL.CONTROLLER_DEADZONE and rawJSValues[1] >= -GVL.CONTROLLER_DEADZONE:
+                setMode("straight")
+            else:
+                if plataforma.curve_mode == "curve":
+                    if rawJSValues[0] <= 0:
+                        usedJSValue[0] = max((-math.sqrt(2)/2), rawJSValues[0])
+                        angle_offset = GVL.CURVE_MAX_RADIUS + (GVL.CURVE_MAX_RADIUS - GVL.CURVE_MIN_RADIUS)*math.sqrt(2)*(usedJSValue[0])
+                    else:
+                        usedJSValue[0] = min((math.sqrt(2)/2), rawJSValues[0])
+                        angle_offset = -GVL.CURVE_MAX_RADIUS + (GVL.CURVE_MAX_RADIUS - GVL.CURVE_MIN_RADIUS)*math.sqrt(2)*(usedJSValue[0])
+                    if rawJSValues[1] <= 0:
+                        usedJSValue[1] = max(-math.sqrt(2)/2, rawJSValues[1])
+                    else:
+                        usedJSValue[1] = min(math.sqrt(2)/2, rawJSValues[1])
+
+                    plataforma.icr_bias = .5 - .5*math.sqrt(2)*(usedJSValue[1])
+                    print(rawJSValues[0])
+                    plataforma.steerWheels("curve", angle_offset=angle_offset)
+        elif plataforma.curve_mode == "pivotal":
+            if rawJSValues[0] <= GVL.CONTROLLER_DEADZONE and rawJSValues[0] >= -GVL.CONTROLLER_DEADZONE and rawJSValues[1] <= GVL.CONTROLLER_DEADZONE and rawJSValues[1] >= -GVL.CONTROLLER_DEADZONE:
+                angle_offset=0
+                plataforma.icr_bias = .5
+            else:
+                if rawJSValues[0] <= 0:
+                    usedJSValue[0] = max((-math.sqrt(2)/2), rawJSValues[0])
+                    angle_offset = +.5 - 7.5*math.sqrt(2)*(usedJSValue[0])
+                else:
+                    usedJSValue[0] = min((math.sqrt(2)/2), rawJSValues[0])
+                    angle_offset = -.5 - 7.5*math.sqrt(2)*(usedJSValue[0])
+                if rawJSValues[1] <= 0:
+                    usedJSValue[1] = max(-math.sqrt(2)/2, rawJSValues[1])
+                else:
+                    usedJSValue[1] = min(math.sqrt(2)/2, rawJSValues[1])
+
+                plataforma.icr_bias = .5 - .5*math.sqrt(2)*(usedJSValue[1])
+                #print(rawJSValues[0])
+                plataforma.steerWheels("curve", angle_offset=angle_offset)
+        plataforma.curvature.update(angle_offset=angle_offset)
+        turtle.update()
+        turtle.ontimer(joystickAngleOffsetUpdate, GVL.CONTROLLER_TICK)
 
     # Callback para as teclas de ajuste de ângulo (aumenta)
     def updateAngleSpeed(key):
@@ -277,7 +325,7 @@ def main():
     ui.update_mode_display("straight")
     plataforma.steerWheels("straight")
     joystick.update_joystick()
-    
+    joystickAngleOffsetUpdate()
     # Coloca o veículo em posição inicial
     plataforma.setPosition((90, 50))
     
