@@ -373,7 +373,7 @@ class Vehicle:
                     R = ROBOT_LENGTH
 
                 #Admite o ângulo incremental (dθ) como uma constante dada pelo step de 5 un. pelo comprimento do robô
-                dtheta = ANGULAR_VEL_CONST
+                dtheta = step/ GVL.ROBOT_LENGTH
 
                 if direction == "backward":
                     dtheta = -dtheta
