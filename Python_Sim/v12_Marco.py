@@ -19,6 +19,7 @@ from Robot.Pathing.Axes import Axes
 from Robot.Drivetrain.Wheels import Wheel
 from Robot.Drivetrain.Vehicle import Vehicle
 
+from Application.joystick_test import Joystick
 from Application.Screen import Screen
 from Application.UI import UI
 
@@ -37,7 +38,7 @@ def main():
     screen = Screen(title="Projeto TRAFO: Simulação de Veículo 4WS")
     ui = UI(screen)
     plataforma = Vehicle("Plataforma", "DarkGoldenrod1", (0, 0))
-
+    joystick = Joystick()
     # Lista de modos pelos quais o 'curve_mode' vai comutar
     curvature_modes = ["straight", "diagonal", "pivotal", "içamento"]
     current_mode_index = 0
@@ -275,7 +276,8 @@ def main():
     ui.draw_break()
     ui.update_mode_display("straight")
     plataforma.steerWheels("straight")
-
+    joystick.update_joystick()
+    
     # Coloca o veículo em posição inicial
     plataforma.setPosition((90, 50))
     
@@ -283,6 +285,7 @@ def main():
 
     # Roda o loop principal da tela
     screen.mainLoop()
+
     
 # Chamada incondicional da função principal
 if __name__ == '__main__':
