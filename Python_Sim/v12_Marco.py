@@ -344,7 +344,7 @@ def main():
     ui.update_mode_display("straight")
     plataforma.steerWheels("straight")
     joystick.update_joystick()
-    joystickAngleOffsetUpdate()
+    #joystickAngleOffsetUpdate()
     # Coloca o veículo em posição inicial
     plataforma.setPosition((90, 50))
     
