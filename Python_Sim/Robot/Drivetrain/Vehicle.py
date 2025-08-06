@@ -24,6 +24,8 @@ class Vehicle:
         self.length = length # Largura do objeto
         self.icr_bias = 0.5
         self.icr_global = None
+
+        self.angle_offset = 0
         # Variáveis auxiliares para posicionamento das rodas
         half_length = self.length / 2 # Metade do comprimento do objeto
         half_width = self.width   / 2 # Metade da largura do objeto
@@ -375,9 +377,15 @@ class Vehicle:
                 #Admite o ângulo incremental (dθ) como uma constante dada pelo step de 5 un. pelo comprimento do robô
                 dtheta = step/ GVL.ROBOT_LENGTH
 
-                if direction == "backward":
+                if direction == "forward":
                     dtheta = -dtheta
 
+                if self.curve_mode != "pivotal":
+                    if self.angle_offset > -7:
+                        dtheta = -dtheta
+
+                
+                
                 # calcula o comprimento de arco a ser andado com base no raio
                 f_step = dtheta * R
                 step = abs(f_step)

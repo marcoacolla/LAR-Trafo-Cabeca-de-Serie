@@ -13,6 +13,7 @@ class Joystick:
         # Constantes de configuração
         self.BITRATE = 500000     # Taxa de transmissão CAN em bits por segundo (500 kbps)
         self.CAN_CHANNEL = 0x200  # Canal (ID) da mensagem CAN enviada pela TTC (11 bits padrão)
+        self.update_joystick()
         self.configCan()
 
     def update_joystick(self):
@@ -43,7 +44,7 @@ class Joystick:
     
     def loopHearCan(self):
         # Aguarda nova mensagem CAN
-        msg = self.bus.recv()  
+        msg = self.bus.recv(timeout=.01)  
         
         # Se não há mensagens, continua
         if not (msg is None):
@@ -54,14 +55,23 @@ class Joystick:
                 data = msg.data
 
                 # Decodifica dois inteiros de 2 bytes 
-                valor_1_INT = struct.unpack('<h', data[0:2])[0]
-                valor_2_INT = struct.unpack('<h', data[2:4])[0]
+                Joystick_X_1 = struct.unpack('<h', data[0:2])[0]
+                Joystick_Y_1 = struct.unpack('<h', data[2:4])[0]
+
+                Joystick_X_2 = struct.unpack('<h', data[4:6])[0]
+                Joystick_Y_2 = struct.unpack('<h', data[6:8])[0]
 
                 # Converte para float com 1 casa decimal
-                valor_1_FLOAT = valor_1_INT / 10.0
-                valor_2_FLOAT = valor_2_INT / 10.0
+                self.eixo_esquerdo_x = Joystick_X_1 / 10.0
+                self.eixo_esquerdo_y = Joystick_Y_1 / 10.0
+
+                self.eixo_direito_x = Joystick_X_2 / 10.0
+                self.eixo_direito_y = Joystick_Y_2 / 10.0
+
+
 
                 # Imprime os valores recebidos
-                #print(f"Valor 1: {valor_1_FLOAT:.1f}, Valor 2: {valor_2_FLOAT:.1f}")
+                #print(f"Valor 1: {self.eixo_esquerdo_x:.1f}, Valor 2: {self.eixo_esquerdo_y:.1f}")
+        
         turtle.ontimer(self.loopHearCan, GVL.CONTROLLER_TICK)
         return
