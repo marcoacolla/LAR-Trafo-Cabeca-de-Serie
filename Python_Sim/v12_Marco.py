@@ -19,7 +19,7 @@ from Robot.Pathing.Axes import Axes
 from Robot.Drivetrain.Wheels import Wheel
 from Robot.Drivetrain.Vehicle import Vehicle
 
-from Application.joystick_test import Joystick
+from Python_Sim.Application.joystick import Joystick
 from Application.Screen import Screen
 from Application.UI import UI
 
@@ -148,6 +148,19 @@ def main():
             turtle.ontimer(lambda: interpolate(step + 1), interval)
 
         interpolate(1)
+    def changeModeRotine():
+        if joystick.hasChangedMode:
+            match joystick.currentMode:
+                case 1:
+                    setMode("straight")
+                case 2:
+                    setMode("diagonal")
+                case 4:
+                    setMode("pivotal")
+                case 8:
+                    setMode("içamento")
+        turtle.update()
+        turtle.ontimer(changeModeRotine, GVL.CONTROLLER_TICK)
 
     def joystickAngleOffsetUpdate():
         rawJSValues = joystick.getJoystickValues()

@@ -18,19 +18,14 @@ class Joystick:
 
     def update_joystick(self):
         
-        self.eixo_esquerdo_x = 0#self.joystick.get_axis(0)  # Eixo X do analógico esquerdo
-        self.eixo_esquerdo_y = 0#self.joystick.get_axis(1)  # Eixo Y do analógico esquerdo
+        self.eixo_esquerdo_x = 0
+        self.eixo_esquerdo_y = 0
 
-        self.eixo_direito_x = 0#self.joystick.get_axis(2)  # Eixo X do analógico direito
-        self.eixo_direito_y = 0#self.joystick.get_axis(3)  # Eixo Y do analógico direito (em alguns modelos é o 5)
+        self.eixo_direito_x = 0
+        self.eixo_direito_y = 0
         
-
-        # Aqui você pode mover seu robô, por exemplo:
-        # turtle.setheading(eixo_x * 180)
-        # turtle.forward(eixo_y * 5)
-
-        # Agenda a próxima leitura
-        #turtle.ontimer(self.update_joystick, GVL.CONTROLLER_TICK)  # chama de novo em 100 ms
+        self.currentMode = 0
+        self.hasChangedMode = False
 
         return
     
@@ -61,6 +56,13 @@ class Joystick:
                 Joystick_X_2 = struct.unpack('<h', data[4:6])[0]
                 Joystick_Y_2 = struct.unpack('<h', data[6:8])[0]
 
+                selectedMode = struct.unpack('<h', data[8:10])[0]
+
+                if selectedMode != self.currentMode:
+                    self.currentMode = selectedMode
+                    self.hasChangedMode = True
+                else:
+                    self.hasChangedMode = False
                 # Converte para float com 1 casa decimal
                 self.eixo_esquerdo_x = Joystick_X_1 / 10.0
                 self.eixo_esquerdo_y = Joystick_Y_1 / 10.0
