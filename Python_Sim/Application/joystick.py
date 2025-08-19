@@ -12,7 +12,8 @@ class Joystick:
     def __init__(self):
         # Constantes de configuração
         self.BITRATE = 500000     # Taxa de transmissão CAN em bits por segundo (500 kbps)
-        self.CAN_CHANNEL = 0x200  # Canal (ID) da mensagem CAN enviada pela TTC (11 bits padrão)
+        self.CAN_CHANNEL_JOYSTICK = 0x200 # Canal (ID) da mensagem CAN enviada pela TTC (11 bits padrão)
+        self.CAN_CHANNEL_SELETORA = 0x201
         self.update_joystick()
         self.configCan()
 
@@ -34,6 +35,13 @@ class Joystick:
 
     def configCan(self):
         self.bus = can.interface.Bus(channel='PCAN_USBBUS1', interface='pcan', bitrate=self.BITRATE)
+        
+        # Limpa mensagens antigas que já estão na fila
+        while True:
+            msg = self.bus.recv(timeout=0.1)
+            if msg is None:
+                break
+
         self.loopHearCan()
         return
     
@@ -44,32 +52,32 @@ class Joystick:
         # Se não há mensagens, continua
         if not (msg is None):
             # Filtra apenas mensagens com o ID esperado e exatamente 4 bytes
-            if  not msg.is_extended_id and msg.arbitration_id == self.CAN_CHANNEL and msg.dlc >= 4:
-
+            if  not msg.is_extended_id and msg.dlc >= 2:
                 # Obtém os dados da mensagem
                 data = msg.data
+                if msg.arbitration_id == self.CAN_CHANNEL_JOYSTICK:
 
-                # Decodifica dois inteiros de 2 bytes 
-                Joystick_X_1 = struct.unpack('<h', data[0:2])[0]
-                Joystick_Y_1 = struct.unpack('<h', data[2:4])[0]
+                    # Decodifica dois inteiros de 2 bytes 
+                    Joystick_X_1 = struct.unpack('<h', data[0:2])[0]
+                    Joystick_Y_1 = struct.unpack('<h', data[2:4])[0]
 
-                Joystick_X_2 = struct.unpack('<h', data[4:6])[0]
-                Joystick_Y_2 = struct.unpack('<h', data[6:8])[0]
+                    Joystick_X_2 = struct.unpack('<h', data[4:6])[0]
+                    Joystick_Y_2 = struct.unpack('<h', data[6:8])[0]
 
-                selectedMode = struct.unpack('<h', data[8:10])[0]
+                    # Converte para float com 1 casa decimal
+                    self.eixo_esquerdo_x = Joystick_X_1 / 10.0
+                    self.eixo_esquerdo_y = Joystick_Y_1 / 10.0
 
-                if selectedMode != self.currentMode:
-                    self.currentMode = selectedMode
-                    self.hasChangedMode = True
-                else:
-                    self.hasChangedMode = False
-                # Converte para float com 1 casa decimal
-                self.eixo_esquerdo_x = Joystick_X_1 / 10.0
-                self.eixo_esquerdo_y = Joystick_Y_1 / 10.0
+                    self.eixo_direito_x = Joystick_X_2 / 10.0
+                    self.eixo_direito_y = Joystick_Y_2 / 10.0
+                elif msg.arbitration_id == self.CAN_CHANNEL_SELETORA:
+                        
+                    # Decodifica dois inteiros de 2 bytes 
+                    selectedMode = struct.unpack('<h', data[0:2])[0]
 
-                self.eixo_direito_x = Joystick_X_2 / 10.0
-                self.eixo_direito_y = Joystick_Y_2 / 10.0
-
+                    if selectedMode != self.currentMode:
+                        self.currentMode = selectedMode
+                        self.hasChangedMode = True
 
 
                 # Imprime os valores recebidos

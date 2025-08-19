@@ -19,7 +19,7 @@ from Robot.Pathing.Axes import Axes
 from Robot.Drivetrain.Wheels import Wheel
 from Robot.Drivetrain.Vehicle import Vehicle
 
-from Python_Sim.Application.joystick import Joystick
+from Application.joystick import Joystick
 from Application.Screen import Screen
 from Application.UI import UI
 
@@ -149,16 +149,23 @@ def main():
 
         interpolate(1)
     def changeModeRotine():
+        #print(joystick.hasChangedMode)
         if joystick.hasChangedMode:
-            match joystick.currentMode:
+            #print("ALO SILVAAAAAAAAAAAAAAAA")
+            match int(joystick.currentMode):
                 case 1:
                     setMode("straight")
+                    ui.update_mode_display("straight")
                 case 2:
                     setMode("diagonal")
+                    ui.update_mode_display("diagonal")
                 case 4:
                     setMode("pivotal")
+                    ui.update_mode_display("pivotal")
                 case 8:
                     setMode("içamento")
+                    ui.update_mode_display("içamento")
+            joystick.hasChangedMode = False
         turtle.update()
         turtle.ontimer(changeModeRotine, GVL.CONTROLLER_TICK)
 
@@ -356,6 +363,7 @@ def main():
 
     #joystick.update_joystick()
     joystickAngleOffsetUpdate()
+    changeModeRotine()
 
     # Coloca o veículo em posição inicial
     plataforma.setPosition((90, 50))
