@@ -247,7 +247,11 @@ def main():
                 screen.update_camera(*plataforma.icr_global)
             else:
                 screen.update_camera(*plataforma.getPosition())
+
+            
             turtle.update()
+        
+        plataforma.draw_lights()
         turtle.ontimer(joystickAngleOffsetUpdate, GVL.CONTROLLER_TICK)
 
     # Callback para as teclas de ajuste de ângulo (aumenta)

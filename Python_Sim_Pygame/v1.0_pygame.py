@@ -41,8 +41,6 @@ while running:
                     # Verde não é parede
                     if cor == (255, 255, 255):
                         continue
-                    if cor[1] > 200 and cor[0] < 100 and cor[2] < 100:
-                        continue
                     player.set_dead()
                     break
             if player.is_dead():
@@ -56,7 +54,7 @@ while running:
 
     # Desenhar o player centralizado usando a câmera
     centered_rect = camera.apply(player_rect)
-    pygame.draw.rect(screen, player.color, centered_rect)
+    player.draw(screen)
 
     if player.is_dead():
         def reset_player():

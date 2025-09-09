@@ -1,3 +1,4 @@
+    
 import math
 import turtle
 import GVL
@@ -54,6 +55,12 @@ class Vehicle:
             Wheel(self, "COL_4",  half_length, -half_width)  # Coluna Frontal - Direita
         ]
 
+        self.lights = [True, False, True, False] # Estado das luzes (4)
+        self.lights_turtle = turtle.Turtle()
+        self.lights_turtle.hideturtle()
+        self.lights_turtle.speed(0)
+        self.lights_turtle.penup()
+
         # Curvatura do veículo e de suas rodas
         self.curvature = Curvature(self, color="CornflowerBlue")
 
@@ -94,6 +101,31 @@ class Vehicle:
         # Atualiza a posição e orientação dos eixos
         self.fixed_axes.updateOrientation()
         self.moving_axes.updateOrientation()
+
+    def draw_lights(self, start_x=0, start_y=-60, radius=10, spacing=30):
+        """Desenha as luzes alinhadas sobre o robô, acompanhando posição e orientação."""
+        colors = ['green', 'yellow', 'red', 'blue']
+        self.lights_turtle.clear()
+        # Posição central do robô
+        cx, cy = self.turtle.position()
+        heading = self.turtle.heading()
+        # Luzes alinhadas na frente do robô
+        base_offset = self.length/2 + 20  # distância da frente do robô
+        for i, state in enumerate(self.lights):
+            # Calcula posição relativa de cada luz
+            angle_rad = math.radians(heading)
+            # Alinha as luzes na frente, espaçadas lateralmente
+            offset_x = base_offset * math.sin(angle_rad) + (i-1.5)*spacing*math.cos(angle_rad)
+            offset_y = -base_offset * math.cos(angle_rad) + (i-1.5)*spacing*math.sin(angle_rad)
+            x = cx + offset_x
+            y = cy + offset_y
+            self.lights_turtle.goto(x, y)
+            self.lights_turtle.pendown()
+            self.lights_turtle.fillcolor(colors[i] if state else 'gray')
+            self.lights_turtle.begin_fill()
+            self.lights_turtle.circle(radius)
+            self.lights_turtle.end_fill()
+            self.lights_turtle.penup()
 
     # Define uma nova orientação para a instância
     def setHeading(self, new_heading):

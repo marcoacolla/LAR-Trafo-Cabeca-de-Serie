@@ -14,6 +14,7 @@ class Joystick:
         self.BITRATE = 500000     # Taxa de transmissão CAN em bits por segundo (500 kbps)
         self.CAN_CHANNEL_JOYSTICK = 0x200 # Canal (ID) da mensagem CAN enviada pela TTC (11 bits padrão)
         self.CAN_CHANNEL_SELETORA = 0x201
+        self.CAN_CHANNEL_LIGHTS = 0x202
         self.update_joystick()
         self.can_available = False
         try:
@@ -76,5 +77,11 @@ class Joystick:
                     if selectedMode != self.currentMode:
                         self.currentMode = selectedMode
                         self.hasChangedMode = True
+                elif msg.arbitration_id == self.CAN_CHANNEL_LIGHTS:
+                    # Decodifica o estado das luzes
+                    lightsState = struct.unpack('<B', data[0:1])[0]
+                    self.lights = [(lightsState & (1 << i)) != 0 for i in range(4)]
+
+                    
         turtle.ontimer(self.loopHearCan, GVL.CONTROLLER_TICK)
         return
