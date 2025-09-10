@@ -22,8 +22,8 @@ class Camera:
 
     def update(self, player):
         # Centraliza o player na tela
-        self.offset_x = player.x - self.width // 2 + player.size // 2
-        self.offset_y = player.y - self.height // 2 + player.size // 2
+        self.offset_x = player.x - self.width // 2 
+        self.offset_y = player.y - self.height // 2
 
     def apply(self, rect):
         # Aplica o deslocamento da câmera a um retângulo

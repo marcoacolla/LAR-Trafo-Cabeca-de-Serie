@@ -55,7 +55,7 @@ class Vehicle:
             Wheel(self, "COL_4",  half_length, -half_width)  # Coluna Frontal - Direita
         ]
 
-        self.lights = [True, False, True, False] # Estado das luzes (4)
+        self.lights = [True, True, True, True, True] # Estado das luzes (5)
         self.lights_turtle = turtle.Turtle()
         self.lights_turtle.hideturtle()
         self.lights_turtle.speed(0)
@@ -104,7 +104,7 @@ class Vehicle:
 
     def draw_lights(self, start_x=0, start_y=-60, radius=10, spacing=30):
         """Desenha as luzes alinhadas sobre o robô, acompanhando posição e orientação."""
-        colors = ['green', 'yellow', 'red', 'blue']
+        colors = ['green', 'yellow', 'red', 'blue', 'white']
         self.lights_turtle.clear()
         # Posição central do robô
         cx, cy = self.turtle.position()
@@ -115,8 +115,8 @@ class Vehicle:
             # Calcula posição relativa de cada luz
             angle_rad = math.radians(heading)
             # Alinha as luzes na frente, espaçadas lateralmente
-            offset_x = base_offset * math.sin(angle_rad) + (i-1.5)*spacing*math.cos(angle_rad)
-            offset_y = -base_offset * math.cos(angle_rad) + (i-1.5)*spacing*math.sin(angle_rad)
+            offset_x = base_offset * math.sin(angle_rad) + (i-2)*spacing*math.cos(angle_rad)
+            offset_y = -base_offset * math.cos(angle_rad) + (i-2)*spacing*math.sin(angle_rad)
             x = cx + offset_x
             y = cy + offset_y
             self.lights_turtle.goto(x, y)
