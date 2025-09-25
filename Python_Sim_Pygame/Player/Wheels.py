@@ -19,16 +19,22 @@ class Wheel:
         self.last_desired_angle = None
         self.angular_limits = 130
 
-        # Surface base da roda
-        self.base_surface = pygame.Surface((self.width, self.length), 1)
-        self.base_surface.fill(color)
+        self.base_surface = pygame.Surface((self.width, self.length), pygame.SRCALPHA)
+        self.base_surface.fill((0, 0, 0, 0))  # fundo transparente
+
+        # desenha o retângulo da roda
+        pygame.draw.rect(
+            self.base_surface,
+            color,
+            (0, 0, self.width, self.length)
+        )
 
         # Posição absoluta e heading
         self.pos = (0, 0)
         self.heading = 0
 
         # Eixos da roda
-        self.fixed_axes = Axes(self, "fixed", x_axis_color=(255, 0, 0), y_axis_color=(255, 0, 0), fixed=True)
+        self.fixed_axes = Axes(self, "fixed", x_axis_color=(255, 255, 0), y_axis_color=(255, 0, 0), fixed=True)
         self.moving_axes = Axes(self, "moving", x_axis_color=(0, 0, 0), y_axis_color=(0, 0, 0), fixed=False)
 
         # Inicializa posição e orientação
@@ -39,9 +45,11 @@ class Wheel:
 
     def getName(self):
         return self.name
-
     def getPosition(self):
         return self.pos
+    
+    def getCameraRelativePosition(self):
+        return (self.pos[0] - self.parent.camera.camera_offset[0], self.pos[1] - self.parent.camera.camera_offset[1])
 
     def getHeading(self):
         return self.heading

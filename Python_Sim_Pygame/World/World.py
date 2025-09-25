@@ -6,27 +6,6 @@ GRID_COLOR = (180, 180, 180)  # cinza
 GRID_SIZE = 40
 
 class World:
-    @staticmethod
-    def find_spawnpoint(map_image, player_size=40):
-        # Aceita qualquer tom de verde (G > 200, R < 100, B < 100)
-        min_x, min_y, max_x, max_y = None, None, None, None
-        for y in range(map_image.get_height()):
-            for x in range(map_image.get_width()):
-                r, g, b = map_image.get_at((x, y))[:3]
-                if g > 200 and r < 100 and b < 100:
-                    if min_x is None or x < min_x:
-                        min_x = x
-                    if max_x is None or x > max_x:
-                        max_x = x
-                    if min_y is None or y < min_y:
-                        min_y = y
-                    if max_y is None or y > max_y:
-                        max_y = y
-        if min_x is not None and min_y is not None and max_x is not None and max_y is not None:
-            center_x = (min_x + max_x) // 2
-            center_y = (min_y + max_y) // 2
-            return center_x - player_size // 2, center_y - player_size // 2
-        return 150, 150  # fallback
 
     def __init__(self, surface):
         self.surface = surface

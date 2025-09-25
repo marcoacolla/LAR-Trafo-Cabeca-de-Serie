@@ -1,6 +1,24 @@
 import pygame
 
 class Camera:
+    
+    def __init__(self, width, height):
+        self.width = width
+        self.height = height
+        self.offset_x = 0
+        self.offset_y = 0
+        self.camera_offset = [self.offset_x, self.offset_y]
+
+    def update(self, player):
+        # Centraliza o player na tela
+        self.offset_x = player.x - self.width // 2 
+        self.offset_y = player.y - self.height // 2
+        self.camera_offset = [self.offset_x, self.offset_y]
+
+    def apply(self, rect):
+        # Aplica o deslocamento da câmera a um retângulo
+        return rect.move(-self.offset_x, -self.offset_y)
+    
     def death_screen(self, screen, player, reset_callback):
         fonte = pygame.font.SysFont(None, 60)
         texto = fonte.render('Você morreu! Pressione R para reiniciar', True, (255, 0, 0))
@@ -14,17 +32,3 @@ class Camera:
             screen.blit(texto, (screen.get_width()//2 - texto.get_width()//2, screen.get_height()//2 - texto.get_height()//2))
             pygame.display.flip()
             pygame.time.Clock().tick(60)
-    def __init__(self, width, height):
-        self.width = width
-        self.height = height
-        self.offset_x = 0
-        self.offset_y = 0
-
-    def update(self, player):
-        # Centraliza o player na tela
-        self.offset_x = player.x - self.width // 2 
-        self.offset_y = player.y - self.height // 2
-
-    def apply(self, rect):
-        # Aplica o deslocamento da câmera a um retângulo
-        return rect.move(-self.offset_x, -self.offset_y)

@@ -252,6 +252,8 @@ def main():
             turtle.update()
         
         plataforma.draw_lights()
+        plataforma.lights = joystick.getLightsValues()
+        
         turtle.ontimer(joystickAngleOffsetUpdate, GVL.CONTROLLER_TICK)
 
     # Callback para as teclas de ajuste de ângulo (aumenta)

@@ -3,6 +3,7 @@ from World.World import World as world
 import os
 from Player.Player import Player
 from Camera.Camera import Camera
+from Player.Pathing.Curvature import Curvature
 
 pygame.init()
 screen = pygame.display.set_mode((800, 600))  # largura x altura
@@ -17,12 +18,14 @@ map_image = pygame.image.load(map_path).convert()
 
 from World.World import World
 SPAWN_X, SPAWN_Y = 200,200
-player = Player(SPAWN_X, SPAWN_Y)
 camera = Camera(800, 600)
+player = Player(SPAWN_X, SPAWN_Y, screen, camera)
+
 
 clock = pygame.time.Clock()
 running = True
 while running:
+    dt = clock.tick(60)
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
@@ -30,14 +33,28 @@ while running:
     keys = pygame.key.get_pressed()
     player.move(keys)
 
-    
+
 
     # Limpa e desenha o mapa
     screen.fill((220, 230, 255))
     screen.blit(map_image, (-camera.offset_x, -camera.offset_y))
 
+
     # Verificar colisão do player com paredes
     player_rect = player.get_hitbox()
+
+    centered_rect = camera.apply(player_rect)
+    # Desenhar o player centralizado usando a câmera
+
+
+    
+
+    camera.update(player)
+    player.draw(camera_offset=(camera.offset_x, camera.offset_y))
+    pygame.draw.rect(screen, (255, 0, 0), centered_rect, 1)
+    player.curvature.update(screen)
+
+    
 
     
 
@@ -54,13 +71,7 @@ while running:
             if player.is_dead():
                 break
 
-    centered_rect = camera.apply(player_rect)
-    # Desenhar o player centralizado usando a câmera
-
-    camera.update(player)
-    player.draw(screen, camera_offset=(camera.offset_x, camera.offset_y))
-    pygame.draw.rect(screen, (255, 0, 0), centered_rect, 1)
-
+    
 
     if player.is_dead():
         def reset_player():

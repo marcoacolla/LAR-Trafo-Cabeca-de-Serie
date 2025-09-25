@@ -104,13 +104,13 @@ class Vehicle:
 
     def draw_lights(self, start_x=0, start_y=-60, radius=10, spacing=30):
         """Desenha as luzes alinhadas sobre o robô, acompanhando posição e orientação."""
-        colors = ['green', 'yellow', 'red', 'blue', 'white']
+        colors = ['red', 'green', 'yellow', 'blue', 'white']
         self.lights_turtle.clear()
         # Posição central do robô
         cx, cy = self.turtle.position()
         heading = self.turtle.heading()
         # Luzes alinhadas na frente do robô
-        base_offset = self.length/2 + 20  # distância da frente do robô
+        base_offset = self.length/2 + 15  # distância da frente do robô
         for i, state in enumerate(self.lights):
             # Calcula posição relativa de cada luz
             angle_rad = math.radians(heading)

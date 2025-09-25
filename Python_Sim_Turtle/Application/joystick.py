@@ -15,6 +15,7 @@ class Joystick:
         self.CAN_CHANNEL_JOYSTICK = 0x200 # Canal (ID) da mensagem CAN enviada pela TTC (11 bits padrão)
         self.CAN_CHANNEL_SELETORA = 0x201
         self.CAN_CHANNEL_LIGHTS = 0x202
+        self.lights = [False, False, False, False,False] # Estado inicial das luzes (4 luzes)
         self.update_joystick()
         self.can_available = False
         try:
@@ -38,7 +39,8 @@ class Joystick:
     
     def getJoystickValues(self):
         return self.eixo_esquerdo_x, self.eixo_esquerdo_y, self.eixo_direito_x, self.eixo_direito_y
-
+    def getLightsValues(self):
+        return self.lights
     def configCan(self):
         self.bus = can.interface.Bus(channel='PCAN_USBBUS1', interface='pcan', bitrate=self.BITRATE)
         # Limpa mensagens antigas que já estão na fila
@@ -51,13 +53,14 @@ class Joystick:
     
     def loopHearCan(self):
         if not getattr(self, 'can_available', True):
+            turtle.ontimer(self.loopHearCan, GVL.CONTROLLER_TICK)
             return
         # Aguarda nova mensagem CAN
         msg = self.bus.recv(timeout=.01)  
         # Se não há mensagens, continua
         if not (msg is None):
             # Filtra apenas mensagens com o ID esperado e exatamente 4 bytes
-            if  not msg.is_extended_id and msg.dlc >= 2:
+            if  not msg.is_extended_id:
                 # Obtém os dados da mensagem
                 data = msg.data
                 if msg.arbitration_id == self.CAN_CHANNEL_JOYSTICK:
@@ -80,7 +83,7 @@ class Joystick:
                 elif msg.arbitration_id == self.CAN_CHANNEL_LIGHTS:
                     # Decodifica o estado das luzes
                     lightsState = struct.unpack('<B', data[0:1])[0]
-                    self.lights = [(lightsState & (1 << i)) != 0 for i in range(4)]
+                    self.lights = [(lightsState & (1 << i)) != 0 for i in range(5)]
 
                     
         turtle.ontimer(self.loopHearCan, GVL.CONTROLLER_TICK)
