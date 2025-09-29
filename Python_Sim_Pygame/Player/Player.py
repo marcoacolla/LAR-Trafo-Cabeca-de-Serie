@@ -111,8 +111,10 @@ class Player:
                 isChangingCourse = True
             if keys[pygame.K_q]:
                 self.icr_bias = min(1.0, self.icr_bias + .1)
+                isChangingCourse = True
             if keys[pygame.K_e]:
                 self.icr_bias = max(0.0, self.icr_bias - .1)
+                isChangingCourse = True
             
             if keys[pygame.K_w]:  # cima
                 self.makeMovement("forward", step=speed)
