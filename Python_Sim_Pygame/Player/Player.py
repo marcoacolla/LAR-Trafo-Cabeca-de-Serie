@@ -26,6 +26,7 @@ class Player:
         self.curve_mode = "straight"
         self.heading = 0
         self.camera = camera
+        self.modes = ["straight", "curve", "pivotal", "diagonal"]
         
 
         self.icr_global = None  # Centro Instantâneo de Rotação (ICR) global
@@ -122,7 +123,7 @@ class Player:
                 self.makeMovement("forward", step=speed)
             if keys[pygame.K_s]:  # baixo
                 self.makeMovement("backward", step=speed)
-        if self.curve_mode == "curve":
+        elif self.curve_mode == "curve" or self.curve_mode == "pivotal":
             nextStep = self.angle_offset
             if keys[pygame.K_a]:
                 isChangingCourse = True
@@ -142,11 +143,15 @@ class Player:
             if keys[pygame.K_s]:  # baixo
                 self.makeMovement("backward", step=speed)
 
-            if nextStep > GLV.CURVE_MAX_RADIUS or nextStep < -GLV.CURVE_MAX_RADIUS:
-                self.setMode("straight")
-            if nextStep >= GLV.CURVE_MIN_RADIUS or nextStep <= -GLV.CURVE_MIN_RADIUS:
-                self.angle_offset = nextStep
-
+            if self.curve_mode == "curve":
+                if nextStep > GLV.CURVE_MAX_RADIUS or nextStep < -GLV.CURVE_MAX_RADIUS:
+                    self.setMode('straight')
+                if nextStep >= GLV.CURVE_MIN_RADIUS or nextStep <= -GLV.CURVE_MIN_RADIUS:
+                    self.angle_offset = nextStep
+            if self.curve_mode == "pivotal":
+                if abs(nextStep) <= GLV.CURVE_MIN_RADIUS:
+                    self.angle_offset = nextStep
+                    
             if isChangingCourse:
                 self.icr_global = self.curvature.computeICR(angle_offset=self.angle_offset)
                 # atualiza imediatamente o steering das rodas para refletir a
@@ -156,6 +161,20 @@ class Player:
                 except Exception:
                     pass
                 isChangingCourse = False
+
+        elif self.curve_mode == "diagonal":
+            # In diagonal mode: A/D rotate wheel headings, W/S move along wheel direction
+            WHEEL_TURN_STEP = 5.0  # degrees per tick when holding A/D
+            if keys[pygame.K_a]:
+                for w in self.wheels:
+                    w.setHeading((w.getHeading() - WHEEL_TURN_STEP) % 360)
+            if keys[pygame.K_d]:
+                for w in self.wheels:
+                    w.setHeading((w.getHeading() + WHEEL_TURN_STEP) % 360)
+            if keys[pygame.K_w]:
+                self.makeMovement("forward", step=speed)
+            if keys[pygame.K_s]:
+                self.makeMovement("backward", step=speed)
 
         
         # Atualiza posição de todas as rodas
@@ -190,11 +209,28 @@ class Player:
             for wheel in self.wheels:
                 # em modo straight as rodas alinham com o heading do robô
                 wheel.setHeading(self.getHeading())
-        else:
-            self.icr_global = self.curvature.computeICR(angle_offset=self.angle_offset)
+            # ensure no lingering ICR remains when switching to straight
+            self.icr_global = None
 
+        # set mode before computing ICR so computeICR can use mode-specific formula
         self.curve_mode = new_mode
-        self.steerWheels(new_mode, angle_offset=self.angle_offset)
+
+        # Only compute a global ICR for modes that require curvature
+        if self.curve_mode in ["curve", "pivotal"]:
+            self.icr_global = self.curvature.computeICR(angle_offset=self.angle_offset)
+        else:
+            # ensure no lingering ICR in modes that don't use it
+            self.icr_global = None
+
+        # If entering diagonal mode, initialize wheel headings defasadas em 45 graus
+        diagonal_angle = 0
+        if new_mode == "diagonal":
+            diagonal_angle = (self.getHeading() + 90) % 360
+            for wheel in self.wheels:
+                wheel.setHeading(diagonal_angle)
+
+        # steer wheels for the new mode; pass diagonal_angle so steerWheels won't override
+        self.steerWheels(new_mode, diagonal_angle=diagonal_angle, angle_offset=self.angle_offset)
 
 
     def steerWheels(self, curve_mode, diagonal_angle=0, angle_offset=1, icr_bias=0.5):
@@ -209,11 +245,7 @@ class Player:
             for w in self.wheels:
                 w.setHeading(diagonal_angle)
 
-        elif curve_mode == "pivotal":
-            # ... mesmo cálculo que você já tem ...
-            pass
-
-        elif curve_mode == "curve":
+        elif curve_mode == "curve" or curve_mode == "pivotal" :
             #icr = self.curvature.computeICR(angle_offset=angle_offset)
             if icr is None:
                 return
@@ -239,7 +271,27 @@ class Player:
                 desired = cand1 if dot1 > dot2 else cand2
                 wheel.setHeading(desired)
 
-        self.curve_mode = curve_mode
+    def toggle_mode(self):
+        """Cycle through robot modes: straight -> diagonal -> pivotal -> curve -> straight."""
+        modes = ['straight', 'diagonal', 'pivotal']
+        self.angle_offset = 0
+        try:
+            try:
+                idx = modes.index(self.curve_mode)
+            except ValueError:
+                idx = 0
+            next_mode = modes[(idx + 1) % len(modes)]
+            # For curve mode use a default curveStart of 0
+
+            self.setMode(next_mode)
+        except Exception:
+            pass
+
+    def handle_event(self, event):
+        """Handle incoming pygame events (keyboard)."""
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_SPACE:
+                self.toggle_mode()
     def is_dead(self):
         return self.state == 'morto'
     
@@ -314,7 +366,11 @@ class Player:
 
         # Movimento diagonal
         elif self.curve_mode == "diagonal":
-            heading_rad = math.radians(self.wheels[0].getHeading())
+            # movement direction should follow the wheel visual tangent used in Curvature.update
+            # Curvature draws wheel heading tangent as angle_to_icr + 90, so the movement direction
+            # corresponds to wheel_heading - 90 degrees (to align with screen/world conventions used)
+            wheel_heading = self.wheels[0].getHeading()
+            heading_rad = math.radians(wheel_heading - 90)
             if direction == "forward":
                 dx = step * math.sin(heading_rad)
                 dy = -step * math.cos(heading_rad)
@@ -337,8 +393,11 @@ class Player:
             if R < 1e-3:
                 R = ROBOT_LENGTH
 
-            # Ângulo girado nesse passo (Δθ = desloc / raio)
-            dtheta = step / R
+            # Use a constant angular change per movement step so rotation speed
+            # is independent of the turning radius. We'll choose a small constant
+            # angular increment (degrees) per call and convert to radians.
+            DEGREES_PER_STEP = 2.0  # degrees per movement step (tweakable)
+            dtheta = math.radians(DEGREES_PER_STEP)
             if direction == "backward":
                 dtheta = -dtheta
 

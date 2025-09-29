@@ -1,4 +1,5 @@
 import pygame
+import math
 from World.World import World as world
 import os
 from Player.Player import Player
@@ -16,8 +17,47 @@ pygame.display.set_caption("Minha Janela Pygame")
 map_path = os.path.join(os.path.dirname(__file__), 'World', 'Obstacles', 'Untitled.png')
 map_image = pygame.image.load(map_path).convert()
 
+# Lightweight green spawn detection: compute centroid of green pixels (one-time)
+def find_green_center(img, thresh=200):
+    w, h = img.get_width(), img.get_height()
+    totx = toty = count = 0
+    for y in range(h):
+        for x in range(w):
+            r, g, b, *rest = img.get_at((x, y))
+            if g >= thresh and r < 100 and b < 100:
+                totx += x; toty += y; count += 1
+    if count == 0:
+        return None
+    return (totx / count, toty / count)
+
+# Lightweight: find a green pixel (center of green area) to use as spawn and to ignore in collisions
+def find_green_center(img, thresh=200):
+    w, h = img.get_width(), img.get_height()
+    totx = toty = count = 0
+    for y in range(h):
+        for x in range(w):
+            r, g, b, *rest = img.get_at((x, y))
+            if g >= thresh and r < 100 and b < 100:
+                totx += x; toty += y; count += 1
+    if count == 0:
+        return None
+    return (totx / count, toty / count)
+
+found = find_green_center(map_image)
+if found:
+    mx, my = found
+    SPAWN_POINT = (mx, my)
+else:
+    SPAWN_POINT = (200, 200)
+
 from World.World import World
-SPAWN_POINT = (200,200)
+# determine spawn from green area if present
+found = find_green_center(map_image)
+if found:
+    mx, my = found
+    SPAWN_POINT = (mx, my)
+else:
+    SPAWN_POINT = (200, 200)
 camera = Camera(800, 600)
 player = Player(SPAWN_POINT, screen, camera)
 
@@ -29,6 +69,11 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+        # forward key events to player
+        try:
+            player.handle_event(event)
+        except Exception:
+            pass
 
     keys = pygame.key.get_pressed()
     player.move(keys)
@@ -62,6 +107,16 @@ while running:
 
     player.draw(camera_or_offset=camera)
     player.curvature.update(screen)
+
+    # Draw UI: current mode in bottom-right of camera view
+    try:
+        font = pygame.font.SysFont(None, 20)
+        mode_text = font.render(f'Mode: {player.curve_mode}', True, (255, 255, 255))
+        # place at bottom-right inside the screen, with small padding
+        padding = 8
+        screen.blit(mode_text, (screen.get_width() - mode_text.get_width() - padding, screen.get_height() - mode_text.get_height() - padding))
+    except Exception:
+        pass
 
     
 
@@ -117,6 +172,22 @@ while running:
                             cor = map_image.get_at((map_x, map_y))[:3]
                         else:
                             cor = (255, 255, 255)
+
+                    # ignore green spawn pixels (threshold) to avoid death on spawn
+                    try:
+                        r, g, b = cor
+                        if g >= 200 and r < 100 and b < 100:
+                            continue
+                    except Exception:
+                        pass
+
+                    # Ignore green spawn pixels (threshold) — treat as free
+                    try:
+                        r, g, b = cor
+                        if g >= 200 and r < 100 and b < 100:
+                            continue
+                    except Exception:
+                        pass
 
                     if cor == (255, 255, 255):
                         continue
