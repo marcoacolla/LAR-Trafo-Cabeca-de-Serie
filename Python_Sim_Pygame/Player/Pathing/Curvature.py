@@ -86,60 +86,99 @@ class Curvature:
         # Todas as posições desenhadas são relativas ao centro da tela (0,0)
 
         # Se não foi possível determinar o círculo, desenha as retas da trajetória
+        # (desenhamos usando coordenadas projetadas para a tela)
         if icr is None:
             for wheel in self.vehicle.wheels:
-                wheel_pos = wheel.getCameraRelativePosition()  # posição visual
-                wheel_heading = wheel.getHeading()
-                line_length = 250
+                wheel_pos = wheel.getCameraRelativePosition()  # posição visual (tela)
+                wheel_heading = wheel.getHeading() - 90
+                line_length = 1000
                 angle_rad = math.radians(wheel_heading)
-                end_x = wheel_pos[0] + line_length * math.cos(angle_rad)
-                end_y = -wheel_pos[1] + line_length * math.sin(angle_rad)
+                # convenção: heading=0 aponta para cima na tela, e cresce no sentido horário
+                end_x = wheel_pos[0] + line_length * math.sin(angle_rad)
+                end_y = wheel_pos[1] - line_length * math.cos(angle_rad)
+                w = 2
+                cam = self.vehicle.camera
+                if hasattr(cam, 'scale'):
+                    w = max(1, int(round(w * cam.scale)))
                 pygame.draw.line(self.surface, self.base_color,
-                                 wheel_pos, (end_x, end_y), 2)
+                                 wheel_pos, (end_x, end_y), w)
             return
 
         # icr retornado por computeICR está em coordenadas do mundo
         # Converta posições para coordenadas relativas à câmera apenas para desenhar
-        cam_off = self.vehicle.camera.camera_offset
-        vehicle_center_world = self.vehicle.getPosition()
-        vehicle_center = (vehicle_center_world[0] - cam_off[0], vehicle_center_world[1] - cam_off[1])
-        icr_vis = (icr[0] - cam_off[0], icr[1] - cam_off[1])
+        cam = self.vehicle.camera
+        if hasattr(cam, 'world_to_screen'):
+            vehicle_center = cam.world_to_screen(self.vehicle.getPosition())
+            icr_vis = cam.world_to_screen(icr)
+        else:
+            cam_off = cam.camera_offset
+            vehicle_center_world = self.vehicle.getPosition()
+            vehicle_center = (vehicle_center_world[0] - cam_off[0], vehicle_center_world[1] - cam_off[1])
+            icr_vis = (icr[0] - cam_off[0], icr[1] - cam_off[1])
 
         dx = vehicle_center[0] - icr_vis[0]
         dy = vehicle_center[1] - icr_vis[1]
         main_radius = math.sqrt(dx*dx + dy*dy)
         # círculo principal de curvatura
+        w = 1
+        cam = self.vehicle.camera
+        if hasattr(cam, 'scale'):
+            w = max(1, int(round(w * cam.scale)))
         pygame.draw.circle(self.surface, self.base_color,
-                           (int(icr_vis[0]), int(icr_vis[1])), int(main_radius), 1)
+                           (int(icr_vis[0]), int(icr_vis[1])), int(main_radius), w)
 
         # ponto do ICR (vis)
+        radius_vis = 5
+        if hasattr(cam, 'scale'):
+            radius_vis = int(round(radius_vis * cam.scale))
         pygame.draw.circle(self.surface, self.base_color,
-                           (int(icr_vis[0]), int(icr_vis[1])), 5)
+                           (int(icr_vis[0]), int(icr_vis[1])), radius_vis)
 
 
         # linhas veículo/rodas -> ICR
         for wheel in self.vehicle.wheels:
-            wheel_pos = wheel.getCameraRelativePosition()  # posição visual
+            wheel_pos = wheel.getCameraRelativePosition(cam)  # posição visual (usa scale)
+            w = 1
+            if hasattr(cam, 'scale'):
+                w = max(1, int(round(w * cam.scale)))
             pygame.draw.line(self.surface, self.base_color,
-                             wheel_pos, icr_vis, 1)
+                             wheel_pos, icr_vis, w)
 
+        w = 1
+        if hasattr(cam, 'scale'):
+            w = max(1, int(round(w * cam.scale)))
         pygame.draw.line(self.surface, self.base_color,
-                         vehicle_center, icr_vis, 1)
+                         vehicle_center, icr_vis, w)
 
         # círculos individuais para cada roda
         for wheel in self.vehicle.wheels:
-            wx, wy = wheel.getCameraRelativePosition()  # posição visual
-            dx = wx - icr_vis[0]
-            dy = wy - icr_vis[1]
+            # use posições do mundo para calcular ângulos corretamente (evita problemas
+            # com a inversão do eixo Y na tela)
+            wx_world, wy_world = wheel.getPosition()
+            # projeção para tela
+            if hasattr(cam, 'world_to_screen'):
+                wx_vis, wy_vis = cam.world_to_screen((wx_world, wy_world))
+            else:
+                wx_vis = wx_world - cam_off[0]
+                wy_vis = wy_world - cam_off[1]
+
+            dx = wx_vis - icr_vis[0]
+            dy = wy_vis - icr_vis[1]
             r = int(math.sqrt(dx**2 + dy**2))
+            w = 1
+            if hasattr(cam, 'scale'):
+                w = max(1, int(round(w * cam.scale)))
             pygame.draw.circle(self.surface, (128, 128, 128),
-                               (int(icr_vis[0]), int(icr_vis[1])), r, 1)
-            
-            # Ângulo do raio (roda -> ICR)
-            angle_to_icr = math.atan2(dy, dx)
+                               (int(icr_vis[0]), int(icr_vis[1])), r, w)
+
+            # Ângulo do raio em coordenadas do mundo (vetor do wheel -> icr)
+            angle_to_icr = math.atan2(icr[1] - wy_world, icr[0] - wx_world)
 
             # Heading da roda = tangente ao círculo = perpendicular ao raio
             wheel_heading = math.degrees(angle_to_icr + math.pi/2)
 
-            # Atualiza a roda
-            wheel.setHeading(wheel_heading)
+            # Normalize para [0,360)
+            wheel_heading = wheel_heading % 360
+            # Não atualiza o heading da roda aqui — o steering é responsabilidade
+            # do Player (setMode / steerWheels). Aqui apenas desenhamos a ajuda
+            # visual da curvatura.

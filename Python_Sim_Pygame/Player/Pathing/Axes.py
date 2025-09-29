@@ -35,8 +35,23 @@ class Axes:
         ]
 
     def draw(self, surface, camera_offset=(0,0)):
+        """camera_offset can be either a Camera instance (preferred) or a (x,y) tuple.
+        If Camera is provided, world_to_screen is used (applies scale)."""
+        use_camera = False
+        cam = None
+        if hasattr(camera_offset, 'world_to_screen'):
+            use_camera = True
+            cam = camera_offset
+
         for start, end, color in self.lines:
-            start_screen = (start[0]-camera_offset[0], start[1]-camera_offset[1])
-            end_screen = (end[0]-camera_offset[0], end[1]-camera_offset[1])
-            pygame.draw.line(surface, color, start_screen, end_screen, 1)
+            if use_camera:
+                start_screen = cam.world_to_screen(start)
+                end_screen = cam.world_to_screen(end)
+            else:
+                start_screen = (start[0]-camera_offset[0], start[1]-camera_offset[1])
+                end_screen = (end[0]-camera_offset[0], end[1]-camera_offset[1])
+            width = 1
+            if use_camera:
+                width = max(1, int(round(width * cam.scale)))
+            pygame.draw.line(surface, color, start_screen, end_screen, width)
 

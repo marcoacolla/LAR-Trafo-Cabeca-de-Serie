@@ -19,14 +19,15 @@ class Wheel:
         self.last_desired_angle = None
         self.angular_limits = 130
 
-        self.base_surface = pygame.Surface((self.width, self.length), pygame.SRCALPHA)
+        # Store a base surface in world units (unscaled). We'll scale it at draw time
+        self.base_surface = pygame.Surface((max(1, int(self.width)), max(1, int(self.length))), pygame.SRCALPHA)
         self.base_surface.fill((0, 0, 0, 0))  # fundo transparente
 
-        # desenha o retângulo da roda
+        # desenha o retângulo da roda in world-px units; color may be overridden
         pygame.draw.rect(
             self.base_surface,
             color,
-            (0, 0, self.width, self.length)
+            (0, 0, int(self.width), int(self.length))
         )
 
         # Posição absoluta e heading
@@ -48,8 +49,12 @@ class Wheel:
     def getPosition(self):
         return self.pos
     
-    def getCameraRelativePosition(self):
-        return (self.pos[0] - self.parent.camera.camera_offset[0], self.pos[1] - self.parent.camera.camera_offset[1])
+    def getCameraRelativePosition(self, cam=None):
+        # Backwards-compatible: if parent.camera has world_to_screen use it
+        cam = self.parent.camera
+        if hasattr(cam, 'world_to_screen'):
+            return cam.world_to_screen(self.pos)
+        return (self.pos[0] - cam.camera_offset[0], self.pos[1] - cam.camera_offset[1])
 
     def getHeading(self):
         return self.heading
@@ -77,17 +82,29 @@ class Wheel:
         self.fixed_axes.updateOrientation()
         self.moving_axes.updateOrientation()
 
-    def draw(self, surface, camera_offset=(0, 0)):
+    def draw(self, surface, camera_or_offset=(0, 0)):
         # Rotaciona e desenha a roda
 
-        screen_x = self.pos[0] - camera_offset[0]
-        screen_y = self.pos[1] - camera_offset[1]
+        if hasattr(camera_or_offset, 'world_to_screen'):
+            screen_x, screen_y = camera_or_offset.world_to_screen(self.pos)
+        else:
+            screen_x = self.pos[0] - camera_or_offset[0]
+            screen_y = self.pos[1] - camera_or_offset[1]
 
+        # Scale base_surface from world pixels to screen pixels according to camera.scale
+        cam = camera_or_offset if hasattr(camera_or_offset, 'world_to_screen') else None
+        if cam is not None and hasattr(cam, 'scale'):
+            scale = cam.scale
+            sw = max(1, int(round(self.base_surface.get_width() * scale)))
+            sh = max(1, int(round(self.base_surface.get_height() * scale)))
+            scaled = pygame.transform.smoothscale(self.base_surface, (sw, sh))
+        else:
+            scaled = self.base_surface
 
-        rotated_surface = pygame.transform.rotate(self.base_surface, -self.heading)
+        rotated_surface = pygame.transform.rotate(scaled, -self.heading)
         rect = rotated_surface.get_rect(center=(screen_x, screen_y))
         surface.blit(rotated_surface, rect)
 
         # Atualiza e desenha eixos na tela (com offset da câmera)
-        self.fixed_axes.draw(surface, camera_offset)
-        self.moving_axes.draw(surface, camera_offset)
+        self.fixed_axes.draw(surface, camera_or_offset)
+        self.moving_axes.draw(surface, camera_or_offset)

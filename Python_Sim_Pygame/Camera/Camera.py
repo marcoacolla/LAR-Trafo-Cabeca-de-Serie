@@ -8,16 +8,40 @@ class Camera:
         self.offset_x = 0
         self.offset_y = 0
         self.camera_offset = [self.offset_x, self.offset_y]
+        # scale: multiplicative zoom factor (1.0 = 100%)
+        self.scale = 1.5
 
     def update(self, player):
-        # Centraliza o player na tela
-        self.offset_x = player.x - self.width // 2 
-        self.offset_y = player.y - self.height // 2
+        # Centraliza o player na tela independente da escala.
+        # world_to_screen: sx = (x - offset_x) * scale
+        # queremos sx == width/2  => offset_x = x - (width/2)/scale
+        s = self.scale if hasattr(self, 'scale') and self.scale != 0 else 1.0
+        self.offset_x = player.x - (self.width / 2.0) / s
+        self.offset_y = player.y - (self.height / 2.0) / s
         self.camera_offset = [self.offset_x, self.offset_y]
 
     def apply(self, rect):
         # Aplica o deslocamento da câmera a um retângulo
-        return rect.move(-self.offset_x, -self.offset_y)
+        # aplica offset e escala (mantendo centro da tela)
+        moved = rect.move(-self.offset_x, -self.offset_y)
+        # escala do rect não é trivial; caller deve usar world_to_screen para
+        # projetar pontos; aqui apenas aplica offset
+        return moved
+
+    def world_to_screen(self, point):
+        """Converte um ponto (x,y) em coordenadas do mundo para coordenadas de tela,
+        aplicando offset e escala (retorna tupla (sx, sy))."""
+        x, y = point
+        sx = (x - self.offset_x) * self.scale
+        sy = (y - self.offset_y) * self.scale
+        return (sx, sy)
+
+    def screen_to_world(self, point):
+        """Converte um ponto de tela para coordenadas do mundo (inverte world_to_screen)."""
+        sx, sy = point
+        x = sx / self.scale + self.offset_x
+        y = sy / self.scale + self.offset_y
+        return (x, y)
     
     def death_screen(self, screen, player, reset_callback):
         fonte = pygame.font.SysFont(None, 60)

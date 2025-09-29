@@ -16,9 +16,9 @@ class Player:
     is_transitioning = False
 
     transition_duration = [100]  # duração padrão da transição em ms
-    def __init__(self, x, y, surface, camera):
-        self.x = x
-        self.y = y
+    def __init__(self, spawnpoint, surface, camera):
+        self.x = spawnpoint[0]
+        self.y = spawnpoint[1]
         self.lenght = ROBOT_LENGTH
         self.width = ROBOT_WIDTH
         self.color = PLAYER_COLOR
@@ -58,8 +58,14 @@ class Player:
     def getPosition(self):
         return (self.x, self.y)
     
-    def getCameraRelativePosition(self):
-        return (self.x - self.camera.camera_offset[0], self.y - self.camera.camera_offset[1])
+    def getCameraRelativePosition(self, camera_or_offset=None):
+        """Return screen coordinates for the player's center. Accepts either a Camera
+        instance or a (x,y) offset tuple. If None, uses self.camera."""
+        cam = camera_or_offset if camera_or_offset is not None else self.camera
+        if hasattr(cam, 'world_to_screen'):
+            return cam.world_to_screen((self.x, self.y))
+        else:
+            return (self.x - cam[0], self.y - cam[1])
     
     def setHeading(self, heading):
         self.heading = heading
@@ -67,23 +73,38 @@ class Player:
     def getHeading(self):
         return self.heading  # Se quiser, pode adicionar rotação do player
 
-    def draw(self, camera_offset=(0,0)):
-        # cria uma superfície do tamanho do robô
-        rect_surf = pygame.Surface((self.width, self.lenght), pygame.SRCALPHA)
-        pygame.draw.rect(rect_surf, self.color, (0, 0, self.width, self.lenght), 6)
+    def draw(self, camera_or_offset=(0,0)):
+        # Draw robot scaled to camera: create base surface in world units then scale to screen pixels
+        cam = camera_or_offset if camera_or_offset is not None else self.camera
 
-        # rotaciona a superfície pelo heading
+        # compute screen size from world dimensions
+        sw = max(1, int(round(self.width * (cam.scale if hasattr(cam, 'scale') else 1.0))))
+        sh = max(1, int(round(self.lenght * (cam.scale if hasattr(cam, 'scale') else 1.0))))
+
+        rect_surf = pygame.Surface((sw, sh), pygame.SRCALPHA)
+        # border thickness scales with camera
+        border = 6
+        if hasattr(cam, 'scale'):
+            border = max(1, int(round(border * cam.scale)))
+        # Draw full rect fill then border to keep visual consistent
+        pygame.draw.rect(rect_surf, self.color, (0, 0, sw, sh), border)
+
+        # rotaciona a superfície pelo heading (rotation operates on screen pixels)
         rotated_surf = pygame.transform.rotate(rect_surf, -self.heading)
 
-        # centraliza no player
-        rect = rotated_surf.get_rect(center=(self.x - camera_offset[0], self.y - camera_offset[1]))
+        # centraliza no player (project world center to screen)
+        if hasattr(cam, 'world_to_screen'):
+            center = cam.world_to_screen((self.x, self.y))
+        else:
+            center = (self.x - camera_or_offset[0], self.y - camera_or_offset[1])
+        rect = rotated_surf.get_rect(center=center)
 
         # desenha no surface principal
         self.surface.blit(rotated_surf, rect.topleft)
 
         # rodas
         for wheel in self.wheels:
-            wheel.draw(self.surface, camera_offset)
+            wheel.draw(self.surface, camera_or_offset)
 
 
     def move(self, keys, speed=5):
@@ -98,9 +119,9 @@ class Player:
                     self.angle_offset = -GLV.CURVE_MAX_RADIUS
                 self.setMode("curve",curveStart=self.angle_offset)
             if keys[pygame.K_w]:  # cima
-                self.y -= speed
+                self.makeMovement("forward", step=speed)
             if keys[pygame.K_s]:  # baixo
-                self.y += speed
+                self.makeMovement("backward", step=speed)
         if self.curve_mode == "curve":
             nextStep = self.angle_offset
             if keys[pygame.K_a]:
@@ -128,6 +149,12 @@ class Player:
 
             if isChangingCourse:
                 self.icr_global = self.curvature.computeICR(angle_offset=self.angle_offset)
+                # atualiza imediatamente o steering das rodas para refletir a
+                # nova curvatura mesmo sem movimento
+                try:
+                    self.steerWheels("curve", angle_offset=self.angle_offset, icr_bias=self.icr_bias)
+                except Exception:
+                    pass
                 isChangingCourse = False
 
         
@@ -143,7 +170,6 @@ class Player:
         if x is not None and y is not None:
             self.x = x
             self.y = y
-
     def setMode(self, mode, curveStart=0, duration=None):
         if self.is_transitioning:
             return  # evita sobreposição
@@ -162,7 +188,8 @@ class Player:
         
         if new_mode in ["straight"]:
             for wheel in self.wheels:
-                wheel.setHeading(45)
+                # em modo straight as rodas alinham com o heading do robô
+                wheel.setHeading(self.getHeading())
         else:
             self.icr_global = self.curvature.computeICR(angle_offset=self.angle_offset)
 
@@ -174,9 +201,9 @@ class Player:
         # (o mesmo código que você já fez, mas sem turtle)
         icr = self.icr_global
         if curve_mode == "straight":
-            steering_angle = self.getHeading()
+            # Em modo straight queremos que as rodas fiquem alinhadas com o heading do robô
             for w in self.wheels:
-                w.setHeading(steering_angle + 90)
+                w.setHeading(self.getHeading() + 90)
 
         elif curve_mode == "diagonal":
             for w in self.wheels:
@@ -228,6 +255,43 @@ class Player:
         
         
         return hitbox
+
+    def get_rotated_hitbox(self):
+        """
+        Retorna os 4 vértices (x,y) da hitbox rotacionada no mundo.
+        Ordem: top-left, top-right, bottom-right, bottom-left (clockwise)
+        """
+        cx, cy = self.getPosition()
+        w, h = self.width, self.lenght
+        # offsets do centro para os cantos (antes da rotação)
+        hw, hh = w / 2.0, h / 2.0
+        corners = [(-hw, -hh), (hw, -hh), (hw, hh), (-hw, hh)]
+
+        theta = math.radians(self.getHeading())
+        cos_t = math.cos(theta)
+        sin_t = math.sin(theta)
+
+        world_corners = []
+        for rx, ry in corners:
+            # rotaciona o offset e soma à posição do centro
+            wx = cx + (rx * cos_t - ry * sin_t)
+            wy = cy + (rx * sin_t + ry * cos_t)
+            world_corners.append((wx, wy))
+
+        return world_corners
+
+    def get_hitbox_polygon(self, camera_or_offset=(0,0)):
+        """
+        Retorna os pontos da hitbox rotacionada já convertidos para coordenadas de tela
+        (aplicando camera_offset) — útil para desenhar.
+        """
+        pts = self.get_rotated_hitbox()
+        cam = camera_or_offset
+        if hasattr(cam, 'world_to_screen'):
+            return [cam.world_to_screen(p) for p in pts]
+        else:
+            camx, camy = cam
+            return [(p[0] - camx, p[1] - camy) for p in pts]
     
 
     def makeMovement(self, direction, step=5.0):
@@ -295,4 +359,46 @@ class Player:
         # Sincroniza rodas com o centro do player
         for wheel in self.wheels:
             wheel.setPosition(self.getPosition())
+
+    def respawn(self, spawnpoint):
+        """
+        Reset completo do player para estado inicial.
+        spawnpoint: (x,y) ou None — se fornecido, posiciona o player ali.
+        """
+        # Restore basic state
+        if spawnpoint is not None:
+            try:
+                x, y = spawnpoint
+                self.set_alive(x, y)
+            except Exception:
+                # fallback: set position directly
+                self.set_alive()
+                self.setPosition(spawnpoint)
+        else:
+            self.set_alive()
+
+        # Reset orientation and motion-related parameters
+        self.setHeading(0)
+        self.curve_mode = "straight"
+        self.icr_global = None
+        self.angle_offset = 0
+        self.icr_bias = 0.5
+        self.is_transitioning = False
+
+        # Ensure wheels sync with center and default heading
+        for wheel in self.wheels:
+            wheel.setPosition(self.getPosition())
+            wheel.setHeading(45)
+            # clear any per-wheel transient state
+            if hasattr(wheel, 'last_desired_angle'):
+                wheel.last_desired_angle = None
+            if hasattr(wheel, 'should_reverse'):
+                wheel.should_reverse = False
+
+        # Make sure mode logic applies consistent wheel headings
+        try:
+            self.setMode('straight')
+        except Exception:
+            pass
+
 
