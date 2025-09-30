@@ -108,13 +108,23 @@ while running:
     player.draw(camera_or_offset=camera)
     player.curvature.update(screen)
 
-    # Draw UI: current mode in bottom-right of camera view
+    # Draw UI: current mode in bottom-left of camera view with semi-transparent background
     try:
         font = pygame.font.SysFont(None, 20)
         mode_text = font.render(f'Mode: {player.curve_mode}', True, (255, 255, 255))
-        # place at bottom-right inside the screen, with small padding
         padding = 8
-        screen.blit(mode_text, (screen.get_width() - mode_text.get_width() - padding, screen.get_height() - mode_text.get_height() - padding))
+        # position at bottom-left
+        x = padding
+        y = screen.get_height() - mode_text.get_height() - padding
+
+        # draw semi-transparent background for readability
+        bg_w = mode_text.get_width() + padding * 2
+        bg_h = mode_text.get_height() + padding
+        bg_surf = pygame.Surface((bg_w, bg_h), pygame.SRCALPHA)
+        bg_surf.fill((0, 0, 0, 150))
+        screen.blit(bg_surf, (x - padding, y - padding//2))
+
+        screen.blit(mode_text, (x, y))
     except Exception:
         pass
 

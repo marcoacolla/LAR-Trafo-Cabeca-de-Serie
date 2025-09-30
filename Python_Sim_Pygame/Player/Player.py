@@ -397,7 +397,17 @@ class Player:
             # is independent of the turning radius. We'll choose a small constant
             # angular increment (degrees) per call and convert to radians.
             DEGREES_PER_STEP = 2.0  # degrees per movement step (tweakable)
-            dtheta = math.radians(DEGREES_PER_STEP)
+            base_dtheta = math.radians(DEGREES_PER_STEP)
+
+            # If the turning radius is very large, limit the angular change so
+            # the arc length doesn't explode. We cap dtheta to either the base
+            # angular step or a value that makes the arc length equal to 'step'
+            # (i.e., dtheta = step / R). This slows movement when R is large.
+            if R > GLV.CURVE_MAX_RADIUS:
+                dtheta = min(base_dtheta, float(step) / R)
+            else:
+                dtheta = base_dtheta
+
             if direction == "backward":
                 dtheta = -dtheta
 
