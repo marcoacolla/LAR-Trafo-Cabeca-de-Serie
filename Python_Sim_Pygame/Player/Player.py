@@ -14,8 +14,11 @@ class Player:
     
     step = 1.0
     is_transitioning = False
-
-    transition_duration = [100]  # duração padrão da transição em ms
+    # transition state
+    transition_start_ms = None
+    transition_duration_ms = 500  # meio segundo
+    transition_from_angles = None  # per-wheel starting angles for interpolation
+    transition_to_angles = None
     def __init__(self, spawnpoint, surface, camera):
         self.x = spawnpoint[0]
         self.y = spawnpoint[1]
@@ -110,6 +113,9 @@ class Player:
 
     def move(self, keys, speed=5):
         isChangingCourse = False
+        # progress any in-progress transition first
+        self.update_transition()
+        # block inputs during transition or if dead
         if self.state != 'vivo' or self.is_transitioning:
             return
         if self.curve_mode == "straight":
@@ -190,47 +196,94 @@ class Player:
             self.x = x
             self.y = y
     def setMode(self, mode, curveStart=0, duration=None):
+        # Start a mode-change transition that lasts `transition_duration_ms`.
+        # While transitioning: inputs are ignored and wheel headings interpolate
+        # from their current values back to default for the new mode.
         if self.is_transitioning:
-            return  # evita sobreposição
+            return  # avoid overlapping transitions
+
+        prev_mode = self.curve_mode
 
         self.angle_offset = curveStart
         self.icr_bias = 0.5
         new_mode = mode
 
-        def on_completion():
-            self.is_transitioning = False
-            if new_mode == "pivotal":
-                self.steerWheels("curve", angle_offset=self.angle_offset)
+        # temporarily save current headings
+        from_angles = [w.getHeading() for w in self.wheels]
 
-        if duration is None:
-            duration = 1000  # ms (1 segundo) → pode ser sua tabela transition_duration
-        
-        if new_mode in ["straight"]:
-            for wheel in self.wheels:
-                # em modo straight as rodas alinham com o heading do robô
-                wheel.setHeading(self.getHeading())
-            # ensure no lingering ICR remains when switching to straight
-            self.icr_global = None
+        # determine destination headings depending on the mode
+        to_angles = []
+        if new_mode == "straight":
+            # wheels align with vehicle heading
+            target = (self.getHeading() + 90) % 360
+            to_angles = [target for _ in self.wheels]
+        elif new_mode == "diagonal":
+            diagonal_angle = (self.getHeading() + 90) % 360
+            to_angles = [diagonal_angle for _ in self.wheels]
+        elif new_mode in ["curve", "pivotal"]:
+            # For curved modes, compute ICR and desired wheel headings now
+            prev_temp_mode = self.curve_mode
+            prev_icr = self.icr_global
+            self.curve_mode = new_mode
+            if new_mode in ["curve", "pivotal"]:
+                self.icr_global = self.curvature.computeICR(angle_offset=self.angle_offset)
+            # compute desired headings without mutating wheels yet
+            desired = []
+            icr = self.icr_global
+            if icr is None:
+                # fallback: align with heading
+                desired = [(self.getHeading() + 90) % 360 for _ in self.wheels]
+            else:
+                icr_x, icr_y = icr
+                theta_v = math.radians(self.getHeading())
+                vx_v, vy_v = math.cos(theta_v), math.sin(theta_v)
+                for wheel in self.wheels:
+                    wx, wy = wheel.getPosition()
+                    rx, ry = wx - icr_x, wy - icr_y
+                    ang_r = math.degrees(math.atan2(ry, rx))
+                    cand1 = (ang_r + 90) % 360
+                    cand2 = (ang_r - 90) % 360
+                    vx1, vy1 = math.cos(math.radians(cand1)), math.sin(math.radians(cand1))
+                    vx2, vy2 = math.cos(math.radians(cand2)), math.sin(math.radians(cand2))
+                    dot1 = vx1 * vx_v + vy1 * vy_v
+                    dot2 = vx2 * vx_v + vy2 * vy_v
+                    desired_angle = cand1 if dot1 > dot2 else cand2
+                    desired.append(desired_angle)
+            to_angles = desired
+            # restore previous
+            self.curve_mode = prev_temp_mode
+            self.icr_global = prev_icr
 
-        # set mode before computing ICR so computeICR can use mode-specific formula
+        # If switching straight -> curve, perform immediate switch (no transition)
+        if prev_mode == 'straight' and new_mode == 'curve':
+            # set logical mode
+            self.curve_mode = new_mode
+            # compute ICR and immediately apply wheel steering for curve
+            self.icr_global = self.curvature.computeICR(angle_offset=self.angle_offset)
+            try:
+                self.steerWheels('curve', angle_offset=self.angle_offset, icr_bias=self.icr_bias)
+            except Exception:
+                pass
+            return
+
+        # ensure lists have correct length
+        if len(to_angles) != len(self.wheels):
+            to_angles = [ (self.getHeading()+90) % 360 for _ in self.wheels]
+
+        # start transition
+        self.is_transitioning = True
+        self.transition_start_ms = pygame.time.get_ticks()
+        self.transition_from_angles = from_angles
+        self.transition_to_angles = to_angles
+
+        # finally update the logical mode state now (so UI shows it)
         self.curve_mode = new_mode
 
-        # Only compute a global ICR for modes that require curvature
+        # compute global ICR for modes that need it
         if self.curve_mode in ["curve", "pivotal"]:
             self.icr_global = self.curvature.computeICR(angle_offset=self.angle_offset)
         else:
-            # ensure no lingering ICR in modes that don't use it
             self.icr_global = None
-
-        # If entering diagonal mode, initialize wheel headings defasadas em 45 graus
-        diagonal_angle = 0
-        if new_mode == "diagonal":
-            diagonal_angle = (self.getHeading() + 90) % 360
-            for wheel in self.wheels:
-                wheel.setHeading(diagonal_angle)
-
-        # steer wheels for the new mode; pass diagonal_angle so steerWheels won't override
-        self.steerWheels(new_mode, diagonal_angle=diagonal_angle, angle_offset=self.angle_offset)
 
 
     def steerWheels(self, curve_mode, diagonal_angle=0, angle_offset=1, icr_bias=0.5):
@@ -270,6 +323,42 @@ class Player:
 
                 desired = cand1 if dot1 > dot2 else cand2
                 wheel.setHeading(desired)
+
+    def update_transition(self):
+        """Call regularly (each frame) to progress an ongoing mode-change transition.
+        Interpolates wheel headings from transition_from_angles -> transition_to_angles
+        over self.transition_duration_ms milliseconds. When complete, finalize state.
+        """
+        if not self.is_transitioning:
+            return
+        now = pygame.time.get_ticks()
+        elapsed = now - (self.transition_start_ms or now)
+        t = min(1.0, float(elapsed) / float(self.transition_duration_ms))
+
+        # simple shortest-angle interpolation for each wheel
+        for i, wheel in enumerate(self.wheels):
+            a0 = self.transition_from_angles[i] % 360
+            a1 = self.transition_to_angles[i] % 360
+            # compute shortest delta
+            delta = (a1 - a0 + 180) % 360 - 180
+            interp = (a0 + delta * t) % 360
+            wheel.setHeading(interp)
+
+        # At halfway (or end) ensure wheel positions are synced
+        for wheel in self.wheels:
+            wheel.setPosition(self.getPosition())
+
+        if t >= 1.0:
+            # transition finished: snap to target headings
+            for i, wheel in enumerate(self.wheels):
+                try:
+                    wheel.setHeading(self.transition_to_angles[i] % 360)
+                except Exception:
+                    pass
+            self.is_transitioning = False
+            self.transition_start_ms = None
+            self.transition_from_angles = None
+            self.transition_to_angles = None
 
     def toggle_mode(self):
         """Cycle through robot modes: straight -> diagonal -> pivotal -> curve -> straight."""
