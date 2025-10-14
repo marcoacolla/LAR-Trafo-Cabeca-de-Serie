@@ -13,7 +13,7 @@ class Camera:
 
     def update(self, player):
         # Centraliza o player na tela independente da escala.
-        # world_to_screen: sx = (x - offset_x) * scale
+        # world_to_screen: sx = (x - offset_x) * Sscale
         # queremos sx == width/2  => offset_x = x - (width/2)/scale
         s = self.scale if hasattr(self, 'scale') and self.scale != 0 else 1.0
         self.offset_x = player.x - (self.width / 2.0) / s
