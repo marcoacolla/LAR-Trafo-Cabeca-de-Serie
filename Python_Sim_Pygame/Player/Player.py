@@ -27,6 +27,8 @@ class Player:
         self.heading = 0
         self.camera = camera
         self.modes = ["straight", "curve", "pivotal", "diagonal"]
+        self.lights = [True, True, True, True]  # Estado das luzes (4 luzes)
+        self.sirene = True  # Estado da sirene (ligada/desligada)
         
 
         self.icr_global = None  # Centro Instantâneo de Rotação (ICR) global
@@ -73,6 +75,78 @@ class Player:
 
     def getHeading(self):
         return self.heading  # Se quiser, pode adicionar rotação do player
+    
+    def drawLights(self, camera_or_offset=(0,0)):
+
+         # Configurações das luzes (posição local x, y e cor)
+        # Layout:
+        #  R R
+        #   B
+        #  G G
+        light_positions = [
+            (-8, -13, (255, 0, 0), self.lights[0],0),   # vermelho esquerdo
+            (8, -13, (255, 0, 0), self.lights[0],0),    # vermelho direito
+
+            (0, 0, (0, 0, 255), self.sirene,0),      # azul no centro
+
+            (-8,0, (255,200,0), self.lights[1],0),
+            (8,0, (255,200,0), self.lights[1],0),
+
+            (-8, 13, (0, 225, 0), self.lights[2],0),    # verde esquerdo
+            (8, 13, (0, 225, 0), self.lights[2],0),     # verde direito
+
+
+
+
+            (12, 45, (200, 200, 255), self.lights[3], 15),
+            (-12, 45, (200, 200, 255), self.lights[3], 15), # branco
+            (12, -45, (200, 200, 255), self.lights[3], 15),
+            (-12, -45, (200, 200, 255), self.lights[3], 15), 
+        ]
+
+        # Dimensões da barra (largura x altura)
+        BAR_WIDTH = 7  # comprimento da barra
+        BAR_HEIGHT = 20  # espessura da barra
+
+        cx, cy = self.getPosition()
+
+        # Função de conversão pra tela (com ou sem câmera)
+        if hasattr(camera_or_offset, 'world_to_screen'):
+            to_screen = lambda x, y: camera_or_offset.world_to_screen((x, y))
+        else:
+            camx, camy = camera_or_offset
+            to_screen = lambda x, y: (x - camx, y - camy)
+
+        # Ângulo do robô em radianos
+        theta = math.radians(self.getHeading())
+        cos_t = math.cos(theta)
+        sin_t = math.sin(theta)
+
+        for lx, ly, color, isOn, size in light_positions:
+            # Rotaciona posição da luz
+            rx = lx * cos_t - ly * sin_t
+            ry = lx * sin_t + ly * cos_t
+            wx, wy = cx + rx, cy + ry
+
+            colorToUse = color if isOn else (150, 150, 150)
+            # Cria superfície temporária para a barra
+            if size != 0:
+                BAR_HEIGHT = size
+                BAR_WIDTH = size
+            bar_surf = pygame.Surface((BAR_WIDTH, BAR_HEIGHT), pygame.SRCALPHA)
+            pygame.draw.rect(bar_surf, colorToUse, (0, 0, BAR_WIDTH, BAR_HEIGHT))
+
+            # Rotaciona a barra conforme o heading
+            rotated_bar = pygame.transform.rotate(bar_surf, -self.getHeading())
+
+            # Converte posição para tela
+            sx, sy = to_screen(wx, wy)
+            rect = rotated_bar.get_rect(center=(int(sx), int(sy)))
+
+            # Desenha no surface principal
+            self.surface.blit(rotated_bar, rect.topleft)
+
+
 
     def draw(self, camera_or_offset=(0,0)):
         # Draw robot scaled to camera: create base surface in world units then scale to screen pixels
@@ -100,9 +174,11 @@ class Player:
             center = (self.x - camera_or_offset[0], self.y - camera_or_offset[1])
         rect = rotated_surf.get_rect(center=center)
 
+        self.drawLights(camera_or_offset)
+
         # desenha no surface principal
         self.surface.blit(rotated_surf, rect.topleft)
-
+        
         # rodas
         for wheel in self.wheels:
             wheel.draw(self.surface, camera_or_offset)
@@ -344,6 +420,76 @@ class Player:
         else:
             camx, camy = cam
             return [(p[0] - camx, p[1] - camy) for p in pts]
+
+    def _point_in_poly(self, x, y, poly):
+        """Ray-casting point-in-polygon test (poly is list of (x,y))."""
+        inside = False
+        j = len(poly) - 1
+        for i in range(len(poly)):
+            xi, yi = poly[i]
+            xj, yj = poly[j]
+            intersect = ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi + 1e-12) + xi)
+            if intersect:
+                inside = not inside
+            j = i
+        return inside
+
+    def try_pickup(self, trafo):
+        """Attempt to pick up a Trafo object. Pickup succeeds only if the Trafo's
+        bounding rectangle is fully contained inside the player's rotated hitbox.
+        On success, marks the trafo as picked and attaches it to the player."""
+        if trafo.picked:
+            return False
+        # player's polygon in world coords
+        poly = self.get_rotated_hitbox()
+        # check all four corners of trafo rect are inside poly
+        rect = trafo.get_rect()
+        corners = [
+            (rect.left, rect.top),
+            (rect.right, rect.top),
+            (rect.right, rect.bottom),
+            (rect.left, rect.bottom),
+        ]
+        all_inside = True
+        for (cx, cy) in corners:
+            if not self._point_in_poly(cx + 0.0, cy + 0.0, poly):
+                all_inside = False
+                break
+        if all_inside:
+            try:
+                trafo.pick(self)
+            except Exception:
+                return False
+            return True
+
+        # Fallback: accept pickup if center of trafo is inside player's hitbox
+        try:
+            if self._point_in_poly(trafo.x, trafo.y, poly):
+                trafo.pick(self)
+                return True
+        except Exception:
+            pass
+
+        # Final fallback: pickup if center distance is small enough
+        try:
+            px, py = self.getPosition()
+            dx = trafo.x - px
+            dy = trafo.y - py
+            dist = math.hypot(dx, dy)
+            # allowable radius: smallest half-dimension of player minus half trafo size
+            half_w = self.width / 2.0
+            half_h = self.lenght / 2.0
+            allow_radius = max(0.0, min(half_w, half_h) - (trafo.size / 2.0))
+            if allow_radius <= 0:
+                # if trafo is large, be permissive and allow if centers are closer than avg half-dim
+                allow_radius = max(half_w, half_h) * 0.6
+            if dist <= allow_radius:
+                trafo.pick(self)
+                return True
+        except Exception:
+            pass
+
+        return False
     
 
     def makeMovement(self, direction, step=5.0):

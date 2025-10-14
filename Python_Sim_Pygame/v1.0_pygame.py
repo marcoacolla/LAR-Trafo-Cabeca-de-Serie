@@ -8,16 +8,17 @@ from Player.Pathing.Curvature import Curvature
 
 pygame.init()
 screen = pygame.display.set_mode((800, 600))  # largura x altura
-pygame.display.set_caption("Minha Janela Pygame")
+pygame.display.set_caption("Pygame Trafo Simulator")
 
 
 
 
 # Carregar imagem do mapa
-map_path = os.path.join(os.path.dirname(__file__), 'World', 'Obstacles', 'Untitled.png')
+map_path = os.path.join(os.path.dirname(__file__), 'World', 'Obstacles', 'Mapa1_debug.png')
 map_image = pygame.image.load(map_path).convert()
 
-# Lightweight green spawn detection: compute centroid of green pixels (one-time)
+
+# Lightweight: find a green pixel (centroid of green area) to use as spawn and to ignore in collisions
 def find_green_center(img, thresh=200):
     w, h = img.get_width(), img.get_height()
     totx = toty = count = 0
@@ -30,27 +31,53 @@ def find_green_center(img, thresh=200):
         return None
     return (totx / count, toty / count)
 
-# Lightweight: find a green pixel (center of green area) to use as spawn and to ignore in collisions
-def find_green_center(img, thresh=200):
+
+def find_blue_center(img):
+    """Find centroid of a blue marker by testing if B is significantly
+    larger than R and G (robust to different blue intensities).
+    Returns (x,y) in image/world coordinates or None if not found."""
     w, h = img.get_width(), img.get_height()
     totx = toty = count = 0
     for y in range(h):
         for x in range(w):
             r, g, b, *rest = img.get_at((x, y))
-            if g >= thresh and r < 100 and b < 100:
+            # blue if b is notably higher than r and g and has decent intensity
+            if b > max(r, g) + 30 and b > 80:
                 totx += x; toty += y; count += 1
     if count == 0:
         return None
     return (totx / count, toty / count)
 
-found = find_green_center(map_image)
-if found:
-    mx, my = found
-    SPAWN_POINT = (mx, my)
-else:
-    SPAWN_POINT = (200, 200)
 
-from World.World import World
+# Build a virtual collision map once: a grid (bytearray per row) where 1 means occupied
+def build_collision_grid(img):
+    w, h = img.get_width(), img.get_height()
+    grid = [bytearray(w) for _ in range(h)]
+    occupied = 0
+    for y in range(h):
+        row = grid[y]
+        for x in range(w):
+            r, g, b, *rest = img.get_at((x, y))
+            # treat strong green as spawn/empty, white as empty, blue marker as empty;
+            # everything else is collision
+            # ignore green spawn area
+            if g >= 200 and r < 100 and b < 100:
+                continue
+            # ignore white background
+            if (r, g, b) == (255, 255, 255):
+                continue
+            # ignore blue marker (B significantly larger than R/G and reasonably bright)
+            if b > max(r, g) + 30 and b > 80:
+                continue
+            row[x] = 1
+            occupied += 1
+    return grid, occupied
+
+
+# Build collision map once
+collision_grid, occupied_pixels = build_collision_grid(map_image)
+print(f"Collision grid built: {occupied_pixels} occupied pixels")
+
 # determine spawn from green area if present
 found = find_green_center(map_image)
 if found:
@@ -58,8 +85,21 @@ if found:
     SPAWN_POINT = (mx, my)
 else:
     SPAWN_POINT = (200, 200)
+
 camera = Camera(800, 600)
 player = Player(SPAWN_POINT, screen, camera)
+from World.Trafo import Trafo
+
+# spawn a trafo at blue marker if present, otherwise use a fallback near player
+blue_found = find_blue_center(map_image)
+if blue_found:
+    bx, by = blue_found
+    trafo = Trafo(bx, by, size=60)
+else:
+    try:
+        trafo = Trafo(SPAWN_POINT[0] + 120, SPAWN_POINT[1], size=60)
+    except Exception:
+        trafo = Trafo(SPAWN_POINT[0] + 120 if isinstance(SPAWN_POINT, tuple) else 300, SPAWN_POINT[1] if isinstance(SPAWN_POINT, tuple) else 200, size=60)
 
 
 clock = pygame.time.Clock()
@@ -105,6 +145,23 @@ while running:
 
     
 
+    # update trafo (it will follow the player if picked) and draw it first
+    try:
+        trafo.update(dt)
+        # attempt pickup if not already picked
+        if not trafo.picked and player.state == 'vivo':
+            picked = player.try_pickup(trafo)
+            if picked:
+                print('Trafo picked up!')
+    except Exception:
+        pass
+
+    try:
+        trafo.draw(screen, camera)
+    except Exception:
+        pass
+
+    # draw player on top of trafo
     player.draw(camera_or_offset=camera)
     player.curvature.update(screen)
 
@@ -127,10 +184,6 @@ while running:
         screen.blit(mode_text, (x, y))
     except Exception:
         pass
-
-    
-
-    
 
 
     if player.state == 'vivo':
@@ -168,42 +221,18 @@ while running:
                 if point_in_poly(world_x, world_y, world_polygon):
                     map_x = int(world_x)
                     map_y = int(world_y)
-                    # If the map was scaled for rendering, sample the scaled_map
-                    if hasattr(camera, 'scale') and camera.scale != 1.0:
-                        # scaled_map was created earlier when rendering
-                        map_px = int(world_x * camera.scale)
-                        map_py = int(world_y * camera.scale)
-                        if 0 <= map_px < scaled_map.get_width() and 0 <= map_py < scaled_map.get_height():
-                            cor = scaled_map.get_at((map_px, map_py))[:3]
-                        else:
-                            cor = (255, 255, 255)
-                    else:
-                        if 0 <= map_x < map_image.get_width() and 0 <= map_y < map_image.get_height():
-                            cor = map_image.get_at((map_x, map_y))[:3]
-                        else:
-                            cor = (255, 255, 255)
-
-                    # ignore green spawn pixels (threshold) to avoid death on spawn
-                    try:
-                        r, g, b = cor
-                        if g >= 200 and r < 100 and b < 100:
-                            continue
-                    except Exception:
-                        pass
-
-                    # Ignore green spawn pixels (threshold) — treat as free
-                    try:
-                        r, g, b = cor
-                        if g >= 200 and r < 100 and b < 100:
-                            continue
-                    except Exception:
-                        pass
-
-                    if cor == (255, 255, 255):
+                    # fast bounds check then collision grid lookup (precomputed)
+                    if not (0 <= map_x < map_image.get_width() and 0 <= map_y < map_image.get_height()):
                         continue
-                    player.set_dead()
-                    collided = True
-                    break
+                    try:
+                        if collision_grid[map_y][map_x]:
+                            # occupied according to virtual map -> collision
+                            player.set_dead()
+                            collided = True
+                            break
+                    except Exception:
+                        # on any unexpected error default to safe (no collision)
+                        continue
 
     
 
