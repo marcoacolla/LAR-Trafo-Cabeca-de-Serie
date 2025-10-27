@@ -19,6 +19,12 @@ class Player:
     transition_duration_ms = 500  # meio segundo
     transition_from_angles = None  # per-wheel starting angles for interpolation
     transition_to_angles = None
+
+    # --- NOVO ---
+    key_hold_time = {"A": 0, "D": 0}
+    max_hold_boost = 4.0   # multiplicador máximo (4x mais rápido)
+    accel_rate = 0.004     # quanto mais rápido acelera (ajuste fino)
+
     def __init__(self, spawnpoint, surface, camera):
         self.x = spawnpoint[0]
         self.y = spawnpoint[1]
@@ -30,7 +36,7 @@ class Player:
         self.heading = 0
         self.camera = camera
         self.modes = ["straight", "curve", "pivotal", "diagonal"]
-        self.lights = [True, True, True, True]  # Estado das luzes (4 luzes)
+        self.lights = [True, False, False, True]  # Estado das luzes (4 luzes)
         self.sirene = True  # Estado da sirene (ligada/desligada)
         
 
@@ -207,12 +213,30 @@ class Player:
                 self.makeMovement("backward", step=speed)
         elif self.curve_mode == "curve" or self.curve_mode == "pivotal":
             nextStep = self.angle_offset
+            # --- calcula tempo de tecla pressionada ---
+            now = pygame.time.get_ticks()
+            dt = 16  # valor aproximado entre frames (~60fps)
+
             if keys[pygame.K_a]:
+                self.key_hold_time["A"] += dt
+                self.key_hold_time["D"] = 0
                 isChangingCourse = True
-                nextStep = self.angle_offset - self.step
-            if keys[pygame.K_d]:
-                nextStep = self.angle_offset + self.step
+                hold_factor = min(self.max_hold_boost,
+                                1.0 + self.accel_rate * self.key_hold_time["A"])
+                nextStep = self.angle_offset - self.step * hold_factor
+
+            elif keys[pygame.K_d]:
+                self.key_hold_time["D"] += dt
+                self.key_hold_time["A"] = 0
                 isChangingCourse = True
+                hold_factor = min(self.max_hold_boost,
+                                1.0 + self.accel_rate * self.key_hold_time["D"])
+                nextStep = self.angle_offset + self.step * hold_factor
+
+            else:
+                # reseta tempos quando solta as teclas
+                self.key_hold_time["A"] = 0
+                self.key_hold_time["D"] = 0
             if keys[pygame.K_q]:
                 self.icr_bias = min(1.0, self.icr_bias + .1)
                 isChangingCourse = True
@@ -227,7 +251,8 @@ class Player:
 
             if self.curve_mode == "curve":
                 if nextStep > GLV.CURVE_MAX_RADIUS or nextStep < -GLV.CURVE_MAX_RADIUS:
-                    self.setMode('straight')
+                    self.toggle_mode()
+                    
                 if nextStep >= GLV.CURVE_MIN_RADIUS or nextStep <= -GLV.CURVE_MIN_RADIUS:
                     self.angle_offset = nextStep
             if self.curve_mode == "pivotal":
@@ -283,6 +308,7 @@ class Player:
         self.angle_offset = curveStart
         self.icr_bias = 0.5
         new_mode = mode
+        self.icr_global = None
 
         # temporarily save current headings
         from_angles = [w.getHeading() for w in self.wheels]
@@ -294,6 +320,7 @@ class Player:
             target = (self.getHeading() + 90) % 360
             to_angles = [target for _ in self.wheels]
         elif new_mode == "diagonal":
+            self.angle_offset = None
             diagonal_angle = (self.getHeading() + 90) % 360
             to_angles = [diagonal_angle for _ in self.wheels]
         elif new_mode in ["curve", "pivotal"]:
@@ -334,6 +361,7 @@ class Player:
         if prev_mode == 'straight' and new_mode == 'curve':
             # set logical mode
             self.curve_mode = new_mode
+            print("Immediate straight->curve mode switch")
             # compute ICR and immediately apply wheel steering for curve
             self.icr_global = self.curvature.computeICR(angle_offset=self.angle_offset)
             try:
@@ -354,7 +382,7 @@ class Player:
 
         # finally update the logical mode state now (so UI shows it)
         self.curve_mode = new_mode
-
+        print(self.icr_global  )
         # compute global ICR for modes that need it
         if self.curve_mode in ["curve", "pivotal"]:
             self.icr_global = self.curvature.computeICR(angle_offset=self.angle_offset)
@@ -439,7 +467,6 @@ class Player:
     def toggle_mode(self):
         """Cycle through robot modes: straight -> diagonal -> pivotal -> curve -> straight."""
         modes = ['straight', 'diagonal', 'pivotal']
-        self.angle_offset = 0
         try:
             try:
                 idx = modes.index(self.curve_mode)
@@ -449,6 +476,7 @@ class Player:
             # For curve mode use a default curveStart of 0
 
             self.setMode(next_mode)
+            self.angle_offset = 0
         except Exception:
             pass
 
@@ -460,55 +488,90 @@ class Player:
     def is_dead(self):
         return self.state == 'morto'
     
-    def get_hitbox(self):
-        """
-        Retorna o retângulo da hitbox do player.
-        """
-
-        hitbox = pygame.Rect(
-            self.x - self.width // 2, 
-            self.y - self.lenght // 2, 
-            self.width, self.lenght)
-        
-        
-        return hitbox
 
     def get_rotated_hitbox(self):
         """
-        Retorna os 4 vértices (x,y) da hitbox rotacionada no mundo.
-        Ordem: top-left, top-right, bottom-right, bottom-left (clockwise)
+        Retorna as partes da hitbox rotacionadas:
+        - Duas linhas conectando as duas rodas frontais e as duas traseiras
+        - Quatro polígonos pequenos representando as rodas (obtidos de Wheel)
         """
-        cx, cy = self.getPosition()
-        w, h = self.width, self.lenght
-        # offsets do centro para os cantos (antes da rotação)
-        hw, hh = w / 2.0, h / 2.0
-        corners = [(-hw, -hh), (hw, -hh), (hw, hh), (-hw, hh)]
+        # Use Wheel objects to obtain wheel polygons in world coords.
+        hitbox_parts = []
+        # append wheel polygons
+        for wheel in self.wheels:
+            try:
+                wheel_poly = wheel.get_rotated_wheel_hitbox()
+                hitbox_parts.append(("wheel", wheel_poly))
+            except Exception:
+                # fallback: ignore if wheel polygon unavailable
+                continue
 
+        # edges: connect front-left to front-right, and rear-left to rear-right
+        # also add the two lateral side edges (left and right) as special parts
+        # Side edges indicate death for obstacles but should not affect trafo pickup
+        try:
+            fl = self.wheels[0].getPosition()
+            fr = self.wheels[1].getPosition()
+            rl = self.wheels[2].getPosition()
+            rr = self.wheels[3].getPosition()
+            # front and rear horizontal edges
+            hitbox_parts.append(("edge", (fl, fr)))
+            hitbox_parts.append(("edge", (rl, rr)))
+            # lateral edges (left and right) - special: used for obstacle collision
+            hitbox_parts.append(("side", (fl, rl)))
+            hitbox_parts.append(("side", (fr, rr)))
+        except Exception:
+            pass
+
+        return hitbox_parts
+
+    def get_body_polygon(self):
+        """
+        Returns a simple rotated rectangle polygon that represents the vehicle body
+        (used for pickup checks and other full-body queries).
+        """
+        cx, cy = self.x, self.y
+        half_w = self.width / 2.0
+        half_l = self.lenght / 2.0
         theta = math.radians(self.getHeading())
         cos_t = math.cos(theta)
         sin_t = math.sin(theta)
 
-        world_corners = []
-        for rx, ry in corners:
-            # rotaciona o offset e soma à posição do centro
-            wx = cx + (rx * cos_t - ry * sin_t)
-            wy = cy + (rx * sin_t + ry * cos_t)
-            world_corners.append((wx, wy))
+        corners = [(-half_w, -half_l), (half_w, -half_l), (half_w, half_l), (-half_w, half_l)]
+        poly = []
+        for dx, dy in corners:
+            wx = cx + dx * cos_t - dy * sin_t
+            wy = cy + dx * sin_t + dy * cos_t
+            poly.append((wx, wy))
+        return poly
 
-        return world_corners
-
-    def get_hitbox_polygon(self, camera_or_offset=(0,0)):
+    def get_hitbox_polygon(self, camera_or_offset=(0, 0)):
         """
-        Retorna os pontos da hitbox rotacionada já convertidos para coordenadas de tela
-        (aplicando camera_offset) — útil para desenhar.
+        Retorna as partes da hitbox rotacionadas (linhas e rodas)
+        convertidas para coordenadas de tela.
         """
-        pts = self.get_rotated_hitbox()
+        parts = self.get_rotated_hitbox()
         cam = camera_or_offset
-        if hasattr(cam, 'world_to_screen'):
-            return [cam.world_to_screen(p) for p in pts]
-        else:
-            camx, camy = cam
-            return [(p[0] - camx, p[1] - camy) for p in pts]
+
+        def to_screen(pt):
+            if hasattr(cam, 'world_to_screen'):
+                return cam.world_to_screen(pt)
+            else:
+                camx, camy = cam
+                return (pt[0] - camx, pt[1] - camy)
+
+        screen_parts = []
+        for kind, data in parts:
+            if kind == "edge":
+                p1, p2 = map(to_screen, data)
+                screen_parts.append(("edge", (p1, p2)))
+            elif kind == "side":
+                p1, p2 = map(to_screen, data)
+                screen_parts.append(("side", (p1, p2)))
+            elif kind == "wheel":
+                screen_parts.append(("wheel", [to_screen(p) for p in data]))
+
+        return screen_parts
 
     def _point_in_poly(self, x, y, poly):
         """Ray-casting point-in-polygon test (poly is list of (x,y))."""
@@ -529,8 +592,8 @@ class Player:
         On success, marks the trafo as picked and attaches it to the player."""
         if trafo.picked:
             return False
-        # player's polygon in world coords
-        poly = self.get_rotated_hitbox()
+        # player's body polygon in world coords (use rectangle approximation)
+        poly = self.get_body_polygon()
         # check all four corners of trafo rect are inside poly
         rect = trafo.get_rect()
         corners = [

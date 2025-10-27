@@ -108,3 +108,28 @@ class Wheel:
         # Atualiza e desenha eixos na tela (com offset da câmera)
         self.fixed_axes.draw(surface, camera_or_offset)
         self.moving_axes.draw(surface, camera_or_offset)
+    
+    def get_rotated_wheel_hitbox(self):
+        """
+        Retorna os 4 vértices (x,y) da hitbox rotacionada no mundo.
+        Ordem: top-left, top-right, bottom-right, bottom-left (clockwise)
+        """
+        cx, cy = self.getPosition()
+        w, h = self.width, self.length
+        # offsets do centro para os cantos (antes da rotação)
+        hw, hh = w / 2.0, h / 2.0
+        corners = [(-hw, -hh), (hw, -hh), (hw, hh), (-hw, hh)]
+
+        theta = math.radians(self.getHeading())
+        cos_t = math.cos(theta)
+        sin_t = math.sin(theta)
+
+        wheel_corners = []
+        for rx, ry in corners:
+            # rotaciona o offset e soma à posição do centro
+            wx = cx + (rx * cos_t - ry * sin_t)
+            wy = cy + (rx * sin_t + ry * cos_t)
+            wheel_corners.append((wx, wy))
+
+        return wheel_corners
+

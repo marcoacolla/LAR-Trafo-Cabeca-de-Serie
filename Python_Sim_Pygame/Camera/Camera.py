@@ -46,13 +46,39 @@ class Camera:
     def death_screen(self, screen, player, reset_callback):
         fonte = pygame.font.SysFont(None, 60)
         texto = fonte.render('Você morreu! Pressione R para reiniciar', True, (255, 0, 0))
+        # Use event.pump() + key polling to avoid pygame.event.get() internal
+        # conversion errors which on some systems raise SystemError(KeyError).
         while player.is_dead():
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
+            try:
+                pygame.event.pump()
+            except Exception:
+                # try to reinitialize joystick subsystem as a pragmatic recovery
+                try:
+                    pygame.joystick.quit()
+                except Exception:
+                    pass
+                try:
+                    pygame.joystick.init()
+                except Exception:
+                    pass
+                try:
+                    pygame.event.pump()
+                except Exception:
+                    # if still failing, fall back to waiting briefly and retry
+                    pass
+
+            # Poll key state for reset (R) and quit (ESC)
+            try:
+                keys = pygame.key.get_pressed()
+                if keys[pygame.K_r]:
+                    reset_callback()
+                if keys[pygame.K_ESCAPE]:
                     pygame.quit()
                     exit()
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
-                    reset_callback()
+            except Exception:
+                # ignore key polling errors and continue to render the death screen
+                pass
+
             screen.blit(texto, (screen.get_width()//2 - texto.get_width()//2, screen.get_height()//2 - texto.get_height()//2))
             pygame.display.flip()
             pygame.time.Clock().tick(60)

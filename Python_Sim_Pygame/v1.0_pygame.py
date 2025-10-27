@@ -14,7 +14,7 @@ pygame.display.set_caption("Pygame Trafo Simulator")
 
 
 # Carregar imagem do mapa
-map_path = os.path.join(os.path.dirname(__file__), 'World', 'Obstacles', 'Mapa1_debug.png')
+map_path = os.path.join(os.path.dirname(__file__), 'World', 'Obstacles', 'Map1.png')
 map_image = pygame.image.load(map_path).convert()
 
 
@@ -106,19 +106,35 @@ clock = pygame.time.Clock()
 running = True
 while running:
     dt = clock.tick(60)
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-        # forward key events to player
+    # Use event.pump() + key polling instead of pygame.event.get() to avoid
+    # platform-specific exceptions inside event conversion. We detect edge
+    # key presses to emulate KEYDOWN for the space key (toggle mode) and ESC
+    # to quit.
+    try:
+        pygame.event.pump()
+    except Exception:
         try:
-            player.handle_event(event)
+            pygame.joystick.quit()
+        except Exception:
+            pass
+        try:
+            pygame.joystick.init()
         except Exception:
             pass
 
     keys = pygame.key.get_pressed()
+    if 'prev_keys' not in globals():
+        prev_keys = keys
+    try:
+        if keys[pygame.K_SPACE] and not prev_keys[pygame.K_SPACE]:
+            player.toggle_mode()
+        if keys[pygame.K_ESCAPE]:
+            running = False
+    except Exception:
+        pass
+    prev_keys = keys
+
     player.move(keys)
-
-
 
     # Atualiza câmera antes de desenhar (offset/scale)
     camera.update(player)
@@ -137,10 +153,17 @@ while running:
     # Verificar colisão do player com paredes usando hitbox rotacionada
     # Obtemos dois polígonos: um em coordenadas de tela para debug, e outro em
     # coordenadas do mundo para a checagem e amostragem de pixels do mapa.
-    screen_polygon = player.get_hitbox_polygon(camera_or_offset=camera)
+    screen_edges = player.get_hitbox_polygon(camera_or_offset=camera)
     world_polygon = player.get_rotated_hitbox()
     # Desenha a hitbox rotacionada (debug) em tela
-    pygame.draw.polygon(screen, (255, 0, 0), screen_polygon, 1)
+    for kind, data in player.get_hitbox_polygon(camera_or_offset=camera):
+        if kind == "edge":
+            pygame.draw.line(screen, (255, 0, 0), *data, 1)
+        elif kind == "side":
+            # lateral sides: draw in a distinct color (magenta) and slightly thicker
+            pygame.draw.line(screen, (255, 0, 255), *data, 2)
+        elif kind == "wheel":
+            pygame.draw.polygon(screen, (0, 255, 0), data, 1)
 
 
     
@@ -150,9 +173,92 @@ while running:
         trafo.update(dt)
         # attempt pickup if not already picked
         if not trafo.picked and player.state == 'vivo':
-            picked = player.try_pickup(trafo)
-            if picked:
-                print('Trafo picked up!')
+            # First: check if any 'edge' or 'wheel' part collides with the trafo
+            # If so, player dies.
+            def seg_intersect(a1, a2, b1, b2):
+                # segment intersection (excluding colinear edge cases handled permissively)
+                (x1, y1), (x2, y2) = a1, a2
+                (x3, y3), (x4, y4) = b1, b2
+                denom = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1)
+                if abs(denom) < 1e-9:
+                    return False
+                ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denom
+                ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / denom
+                return 0.0 <= ua <= 1.0 and 0.0 <= ub <= 1.0
+
+            def point_in_poly(x, y, poly):
+                inside = False
+                j = len(poly) - 1
+                for i in range(len(poly)):
+                    xi, yi = poly[i]
+                    xj, yj = poly[j]
+                    intersect = ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi + 1e-12) + xi)
+                    if intersect:
+                        inside = not inside
+                    j = i
+                return inside
+
+            def poly_rect_collision(poly, rect):
+                # rect is pygame.Rect in world coords
+                # 1) any polygon vertex inside rect
+                for (px, py) in poly:
+                    if rect.collidepoint(px, py):
+                        return True
+                # 2) any rect corner inside polygon
+                corners = [(rect.left, rect.top), (rect.right, rect.top), (rect.right, rect.bottom), (rect.left, rect.bottom)]
+                for (cx, cy) in corners:
+                    if point_in_poly(cx + 0.0, cy + 0.0, poly):
+                        return True
+                # 3) any segment of poly intersects any rect edge
+                rect_edges = [
+                    ((rect.left, rect.top), (rect.right, rect.top)),
+                    ((rect.right, rect.top), (rect.right, rect.bottom)),
+                    ((rect.right, rect.bottom), (rect.left, rect.bottom)),
+                    ((rect.left, rect.bottom), (rect.left, rect.top)),
+                ]
+                for i in range(len(poly)):
+                    a1 = poly[i]
+                    a2 = poly[(i + 1) % len(poly)]
+                    for b1, b2 in rect_edges:
+                        if seg_intersect(a1, a2, b1, b2):
+                            return True
+                return False
+
+            def line_rect_collision(p1, p2, rect):
+                # 1) either endpoint inside rect
+                if rect.collidepoint(p1) or rect.collidepoint(p2):
+                    return True
+                # 2) intersects rect edges
+                rect_edges = [
+                    ((rect.left, rect.top), (rect.right, rect.top)),
+                    ((rect.right, rect.top), (rect.right, rect.bottom)),
+                    ((rect.right, rect.bottom), (rect.left, rect.bottom)),
+                    ((rect.left, rect.bottom), (rect.left, rect.top)),
+                ]
+                for b1, b2 in rect_edges:
+                    if seg_intersect(p1, p2, b1, b2):
+                        return True
+                return False
+
+            trafo_rect = trafo.get_rect()
+            parts = player.get_rotated_hitbox()
+            trafo_collision = False
+            for kind, data in parts:
+                if kind == 'wheel':
+                    if poly_rect_collision(data, trafo_rect):
+                        trafo_collision = True
+                        break
+                elif kind in ('edge', 'line'):
+                    p1, p2 = data
+                    if line_rect_collision(p1, p2, trafo_rect):
+                        trafo_collision = True
+                        break
+            if trafo_collision:
+                player.set_dead()
+            else:
+                picked = player.try_pickup(trafo)
+                if picked:
+                    print('Trafo picked up!')
     except Exception:
         pass
 
@@ -187,15 +293,9 @@ while running:
 
 
     if player.state == 'vivo':
-        # point-in-polygon test for pixels inside the rotated hitbox
-        # compute integer bounding box of polygon in world coordinates to limit work
+        # Collision check handling the new hitbox format: a list of parts
+        # Each part is either ("wheel", polygon) or ("edge", (p1, p2)).
         import math
-        xs = [p[0] for p in world_polygon]
-        ys = [p[1] for p in world_polygon]
-        minx = max(int(math.floor(min(xs))), 0)
-        maxx = min(int(math.ceil(max(xs))), map_image.get_width() - 1)
-        miny = max(int(math.floor(min(ys))), 0)
-        maxy = min(int(math.ceil(max(ys))), map_image.get_height() - 1)
 
         def point_in_poly(x, y, poly):
             # ray-casting algorithm
@@ -210,29 +310,93 @@ while running:
                 j = i
             return inside
 
+        def check_poly_collision(poly):
+            # compute integer bounding box of polygon to limit work
+            xs = [p[0] for p in poly]
+            ys = [p[1] for p in poly]
+            minx = max(int(math.floor(min(xs))), 0)
+            maxx = min(int(math.ceil(max(xs))), map_image.get_width() - 1)
+            miny = max(int(math.floor(min(ys))), 0)
+            maxy = min(int(math.ceil(max(ys))), map_image.get_height() - 1)
+
+            for px in range(minx, maxx + 1):
+                for py in range(miny, maxy + 1):
+                    world_x = px + 0.5
+                    world_y = py + 0.5
+                    if point_in_poly(world_x, world_y, poly):
+                        map_x = int(world_x)
+                        map_y = int(world_y)
+                        if not (0 <= map_x < map_image.get_width() and 0 <= map_y < map_image.get_height()):
+                            continue
+                        try:
+                            if collision_grid[map_y][map_x]:
+                                return True
+                        except Exception:
+                            continue
+            return False
+
+        def check_line_collision(p1, p2):
+            # sample points along the line at ~1px spacing and check grid
+            x1, y1 = p1
+            x2, y2 = p2
+            dx = x2 - x1
+            dy = y2 - y1
+            length = math.hypot(dx, dy)
+            if length < 1e-6:
+                # degenerate: treat single point
+                ix, iy = int(round(x1)), int(round(y1))
+                if 0 <= ix < map_image.get_width() and 0 <= iy < map_image.get_height():
+                    try:
+                        return bool(collision_grid[iy][ix])
+                    except Exception:
+                        return False
+                return False
+
+            steps = int(math.ceil(length))
+            for i in range(steps + 1):
+                t = float(i) / float(steps)
+                wx = x1 + dx * t
+                wy = y1 + dy * t
+                ix = int(wx)
+                iy = int(wy)
+                if not (0 <= ix < map_image.get_width() and 0 <= iy < map_image.get_height()):
+                    continue
+                try:
+                    if collision_grid[iy][ix]:
+                        return True
+                except Exception:
+                    continue
+            return False
+
         collided = False
-        for px in range(minx, maxx + 1):
+        # get the hitbox parts in world coordinates
+        parts = player.get_rotated_hitbox()
+        for kind, data in parts:
             if collided:
                 break
-            for py in range(miny, maxy + 1):
-                # use world coordinates for point-in-polygon and map sampling
-                world_x = px + 0.5
-                world_y = py + 0.5
-                if point_in_poly(world_x, world_y, world_polygon):
-                    map_x = int(world_x)
-                    map_y = int(world_y)
-                    # fast bounds check then collision grid lookup (precomputed)
-                    if not (0 <= map_x < map_image.get_width() and 0 <= map_y < map_image.get_height()):
-                        continue
-                    try:
-                        if collision_grid[map_y][map_x]:
-                            # occupied according to virtual map -> collision
+            try:
+                if kind == 'wheel':
+                    # data is poly (list of points)
+                    if check_poly_collision(data):
+                        player.set_dead()
+                        collided = True
+                        break
+                elif kind in ('edge', 'line', 'side'):
+                    p1, p2 = data
+                    if check_line_collision(p1, p2):
+                        player.set_dead()
+                        collided = True
+                        break
+                else:
+                    # unknown part: if it's a polygon-like sequence assume polygon
+                    if isinstance(data, (list, tuple)) and len(data) >= 3:
+                        if check_poly_collision(data):
                             player.set_dead()
                             collided = True
                             break
-                    except Exception:
-                        # on any unexpected error default to safe (no collision)
-                        continue
+            except Exception:
+                # safe fallback: ignore this part on error
+                continue
 
     
 
