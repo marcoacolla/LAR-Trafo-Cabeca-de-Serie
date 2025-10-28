@@ -44,6 +44,14 @@ class Player:
 
         self.surface = surface
         self.curvature = Curvature(self)
+        # Movement speed configuration
+        # base_speed is the reference step used by movement calls (previous default was 5.0)
+        # speed_modes contains multipliers: 'rápida' is 100%, 'média' 60%, 'lenta' 30%
+        # Note: the user asked that the new fastest mode be slower than the previous
+        # default; to preserve that intent the base_speed can be adjusted if desired.
+        self.base_speed = 3.0
+        self.speed_modes = {"rápida": 1.0, "média": 0.6, "lenta": 0.3}
+        self.speed_mode = "rápida"
 
         self.icr_bias = 0.5  # Bias do ICR (0.0 = esquerda, 1.0 = direita)
         self.angle_offset = 0
@@ -388,6 +396,16 @@ class Player:
             self.icr_global = self.curvature.computeICR(angle_offset=self.angle_offset)
         else:
             self.icr_global = None
+
+    # --- speed mode helpers ---
+    def set_speed_mode(self, mode_name):
+        """Set current speed mode if available. mode_name should be one of the keys
+        in self.speed_modes (e.g. 'rápida', 'média', 'lenta')."""
+        if mode_name in self.speed_modes:
+            self.speed_mode = mode_name
+
+    def get_speed_multiplier(self):
+        return float(self.speed_modes.get(self.speed_mode, 1.0))
 
 
     def steerWheels(self, curve_mode, diagonal_angle=0, angle_offset=1, icr_bias=0.5):

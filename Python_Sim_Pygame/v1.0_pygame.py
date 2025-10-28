@@ -95,11 +95,18 @@ blue_found = find_blue_center(map_image)
 if blue_found:
     bx, by = blue_found
     trafo = Trafo(bx, by, size=60)
+    # remember initial trafo spawn so we can reset it on player death
+    trafo.initial_pos = (bx, by)
 else:
     try:
         trafo = Trafo(SPAWN_POINT[0] + 120, SPAWN_POINT[1], size=60)
+        trafo.initial_pos = (SPAWN_POINT[0] + 120, SPAWN_POINT[1])
     except Exception:
         trafo = Trafo(SPAWN_POINT[0] + 120 if isinstance(SPAWN_POINT, tuple) else 300, SPAWN_POINT[1] if isinstance(SPAWN_POINT, tuple) else 200, size=60)
+        try:
+            trafo.initial_pos = (SPAWN_POINT[0] + 120 if isinstance(SPAWN_POINT, tuple) else 300, SPAWN_POINT[1] if isinstance(SPAWN_POINT, tuple) else 200)
+        except Exception:
+            trafo.initial_pos = (300, 200)
 
 
 clock = pygame.time.Clock()
@@ -128,13 +135,34 @@ while running:
     try:
         if keys[pygame.K_SPACE] and not prev_keys[pygame.K_SPACE]:
             player.toggle_mode()
+        # speed mode shortcuts: 1 = rápida (100%), 2 = média (60%), 3 = lenta (30%)
+        if keys[pygame.K_1] and not prev_keys[pygame.K_1]:
+            try:
+                player.set_speed_mode('rápida')
+            except Exception:
+                pass
+        if keys[pygame.K_2] and not prev_keys[pygame.K_2]:
+            try:
+                player.set_speed_mode('média')
+            except Exception:
+                pass
+        if keys[pygame.K_3] and not prev_keys[pygame.K_3]:
+            try:
+                player.set_speed_mode('lenta')
+            except Exception:
+                pass
         if keys[pygame.K_ESCAPE]:
             running = False
     except Exception:
         pass
     prev_keys = keys
 
-    player.move(keys)
+    # compute movement speed from player base and current speed multiplier
+    try:
+        move_speed = player.base_speed * player.get_speed_multiplier()
+    except Exception:
+        move_speed = 5
+    player.move(keys, speed=move_speed)
 
     # Atualiza câmera antes de desenhar (offset/scale)
     camera.update(player)
@@ -274,7 +302,13 @@ while running:
     # Draw UI: current mode in bottom-left of camera view with semi-transparent background
     try:
         font = pygame.font.SysFont(None, 20)
-        mode_text = font.render(f'Mode: {player.curve_mode}', True, (255, 255, 255))
+        try:
+            speed_label = player.speed_mode
+            speed_pct = int(player.get_speed_multiplier() * 100)
+        except Exception:
+            speed_label = 'rápida'
+            speed_pct = 100
+        mode_text = font.render(f'Mode: {player.curve_mode}  Velocidade: {speed_label} ({speed_pct}%)', True, (255, 255, 255))
         padding = 8
         # position at bottom-left
         x = padding
@@ -402,6 +436,18 @@ while running:
 
     if player.is_dead():
         def reset_player():
+            # drop trafo (if carried) and reset it to its initial spawn
+            try:
+                if hasattr(trafo, 'picked') and trafo.picked:
+                    trafo.drop()
+                if hasattr(trafo, 'initial_pos'):
+                    ix, iy = trafo.initial_pos
+                    trafo.x = ix
+                    trafo.y = iy
+                    trafo.picked = False
+                    trafo.carrier = None
+            except Exception:
+                pass
             player.respawn(SPAWN_POINT)
         camera.death_screen(screen, player, reset_player)
         continue
