@@ -312,7 +312,18 @@ while running:
             else:
                 # Use player's own pickup logic (works in world coords)
                 try:
-                    picked = player.try_pickup(trafo)
+                    # Only allow pickup when in 'icamento' mode and cursor >= 0.8
+                    allow_pickup = False
+                    try:
+                        if getattr(player, 'curve_mode', None) == 'icamento' and getattr(player, 'icamento_cursor', 0.0) >= 0.8:
+                            allow_pickup = True
+                    except Exception:
+                        allow_pickup = False
+
+                    if allow_pickup:
+                        picked = player.try_pickup(trafo)
+                    else:
+                        picked = False
                 except Exception:
                     picked = False
                 if picked:
@@ -352,6 +363,12 @@ while running:
         screen.blit(bg_surf, (x - padding, y - padding//2))
 
         screen.blit(mode_text, (x, y))
+        # Delegate icamento UI drawing to Player
+        try:
+            if hasattr(player, 'draw_icamento_ui'):
+                player.draw_icamento_ui(screen)
+        except Exception:
+            pass
     except Exception:
         pass
 

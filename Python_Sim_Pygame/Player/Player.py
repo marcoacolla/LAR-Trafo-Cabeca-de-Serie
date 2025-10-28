@@ -68,6 +68,8 @@ class Player:
         ]
 
         self.setMode("straight")
+        # icamento cursor (0.0..1.0) used by the special 'icamento' mode UI
+        self.icamento_cursor = 0.5
 
     def getName(self):
         return "player"
@@ -302,6 +304,19 @@ class Player:
             if keys[pygame.K_s]:
                 self.makeMovement("backward", step=speed)
 
+        elif self.curve_mode == "icamento":
+            # In icamento mode: allow normal straight movement while
+            # W/S also move the icamento cursor (used by a UI element).
+            CURSOR_STEP = 0.025 * max(1.0, speed / 3.0)
+            if keys[pygame.K_w]:
+                # move cursor up
+                self.icamento_cursor = max(0.0, self.icamento_cursor - CURSOR_STEP)
+                self.makeMovement("forward", step=speed)
+            if keys[pygame.K_s]:
+                # move cursor down
+                self.icamento_cursor = min(1.0, self.icamento_cursor + CURSOR_STEP)
+                self.makeMovement("backward", step=speed)
+
         
         # Atualiza posição de todas as rodas
         for wheel in self.wheels:
@@ -495,7 +510,8 @@ class Player:
 
     def toggle_mode(self):
         """Cycle through robot modes: straight -> diagonal -> pivotal -> curve -> straight."""
-        modes = ['straight', 'diagonal', 'pivotal']
+        # include new 'icamento' mode after 'pivotal'; 'curve' is not part of the cycle
+        modes = ['straight', 'diagonal', 'pivotal', 'icamento']
         try:
             try:
                 idx = modes.index(self.curve_mode)
@@ -755,6 +771,50 @@ class Player:
         # Sincroniza rodas com o centro do player
         for wheel in self.wheels:
             wheel.setPosition(self.getPosition())
+
+    def draw_icamento_ui(self, screen):
+        """Draw the icamento UI: a vertical yellow bar on the right and a gray cursor."""
+        # only draw when in icamento mode
+        if self.curve_mode != 'icamento':
+            return
+        try:
+            # UI dimensions (screen-space)
+            bar_w = 48
+            bar_h = int(screen.get_height() * 0.6)
+            padding_right = 18
+            bar_x = screen.get_width() - bar_w - padding_right
+            bar_y = screen.get_height() // 2 - bar_h // 2
+
+            # gray moving rectangle (background) - draw it first so yellow sits on top
+            # make the gray rect slightly narrower than the yellow bar (more subtle)
+            gray_w = max(8, bar_w - 8)
+            # gray height equal to bar_h
+            gray_h = bar_h
+
+            # compute vertical range for gray's top position
+            # min_top: almost completely inside the yellow bar, only a small head visible
+            head_visible = max(6, int(bar_h * 0.08))
+            min_top = bar_y - head_visible
+            # apply a small downward offset to the initial position range so the
+            # gray bar starts slightly lower than before
+            offset_down = int(bar_h * 0.06)
+            min_top += offset_down
+            # max_top: half of the gray rect outside the yellow (i.e., gray top such that
+            # half the gray extends below the bar)
+            max_top = bar_y + bar_h - (gray_h // 2) + offset_down
+
+            # interpolate top position by icamento_cursor (0..1) - only vertical movement
+            gray_top = int(min_top + (max_top - min_top) * self.icamento_cursor)
+
+            # center gray horizontally behind the yellow bar
+            gray_x = bar_x + (bar_w // 2) - (gray_w // 2)
+
+            pygame.draw.rect(screen, (120, 120, 120), (gray_x, gray_top, gray_w, gray_h))
+
+            # draw yellow bar on top
+            pygame.draw.rect(screen, (220, 180, 20), (bar_x, bar_y, bar_w, bar_h))
+        except Exception:
+            pass
 
     def respawn(self, spawnpoint):
         """
