@@ -726,14 +726,14 @@ class Player:
             DEGREES_PER_STEP = 2.0  # degrees per movement step (tweakable)
             base_dtheta = math.radians(DEGREES_PER_STEP)
 
-            # If the turning radius is very large, limit the angular change so
-            # the arc length doesn't explode. We cap dtheta to either the base
-            # angular step or a value that makes the arc length equal to 'step'
-            # (i.e., dtheta = step / R). This slows movement when R is large.
-            if R > GLV.CURVE_MAX_RADIUS:
-                dtheta = min(base_dtheta, float(step) / R)
-            else:
-                dtheta = base_dtheta
+            # Limit the angular change so the arc length per movement call
+            # never exceeds the requested linear `step`. Compute a candidate
+            # angular change that makes the arc length equal to `step`:
+            #   dtheta_candidate = step / R
+            # Then cap the angular change to the base angular velocity so we
+            # don't rotate faster than the vehicle allows.
+            eps = 1e-6
+            dtheta = min(base_dtheta, float(step) / max(R, eps))
 
             if direction == "backward":
                 dtheta = -dtheta

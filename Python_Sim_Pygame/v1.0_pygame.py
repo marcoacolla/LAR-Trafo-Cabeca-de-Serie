@@ -161,7 +161,7 @@ while running:
     try:
         move_speed = player.base_speed * player.get_speed_multiplier()
     except Exception:
-        move_speed = 5
+        move_speed = 3
     player.move(keys, speed=move_speed)
 
     # Atualiza câmera antes de desenhar (offset/scale)
