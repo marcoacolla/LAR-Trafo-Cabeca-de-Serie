@@ -13,10 +13,24 @@ class Trafo:
         self.color = color
         self.picked = False
         self.carrier = None
+        # collision_shrink is the fraction to reduce the visible size when
+        # computing collisions. 0.0 means collision rect == visual rect.
+        # A small positive value (e.g. 0.2) makes the hitbox smaller than the
+        # drawn square so collisions feel tighter and match the sprite.
+        self.collision_shrink = 0.2
 
     def get_rect(self):
         half = self.size / 2
         return pygame.Rect(self.x - half, self.y - half, self.size, self.size)
+
+    def get_collision_rect(self):
+        """Return a pygame.Rect used for collision tests. This rect is slightly
+        smaller than the visual rect by applying `collision_shrink` as a
+        proportion of the size (shrink applies equally on both axes)."""
+        frac = max(0.0, min(0.9, float(self.collision_shrink)))
+        coll_size = self.size * (1.0 - frac)
+        half = coll_size / 2.0
+        return pygame.Rect(self.x - half, self.y - half, coll_size, coll_size)
 
     def update(self, dt=0):
         # If carried, follow carrier

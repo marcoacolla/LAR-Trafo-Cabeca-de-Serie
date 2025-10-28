@@ -268,7 +268,9 @@ while running:
                         return True
                 return False
 
-            trafo_rect = trafo.get_rect()
+            # Use a slightly smaller collision rect for the trafo so its
+            # hitbox better matches the visual square on screen.
+            trafo_rect = trafo.get_collision_rect() if hasattr(trafo, 'get_collision_rect') else trafo.get_rect()
             parts = player.get_rotated_hitbox()
             trafo_collision = False
             for kind, data in parts:
@@ -431,8 +433,6 @@ while running:
             except Exception:
                 # safe fallback: ignore this part on error
                 continue
-
-    
 
     if player.is_dead():
         def reset_player():

@@ -77,6 +77,30 @@ class Curvature:
 
     # Função que atualiza o desenho da trajetória de curvatura
     def update(self, surface):
+        # Decide what to draw depending on the current vehicle mode.
+        mode = getattr(self.vehicle, 'curve_mode', 'straight')
+
+        # For straight and diagonal modes: draw long helper rays following
+        # each wheel's heading. Do NOT draw the ICR circle in these modes to
+        # avoid the tiny-center-circle visual glitch; the long rays are useful
+        # guidance for driver in both straight and diagonal modes.
+        if mode in ["straight", "diagonal"]:
+            for wheel in self.vehicle.wheels:
+                wheel_pos = wheel.getCameraRelativePosition()  # posição visual (tela)
+                wheel_heading = wheel.getHeading() - 90
+                line_length = 1000
+                angle_rad = math.radians(wheel_heading)
+                # convenção: heading=0 aponta para cima na tela, e cresce no sentido horário
+                end_x = wheel_pos[0] + line_length * math.sin(angle_rad)
+                end_y = wheel_pos[1] - line_length * math.cos(angle_rad)
+                w = 2
+                cam = self.vehicle.camera
+                if hasattr(cam, 'scale'):
+                    w = max(1, int(round(w * cam.scale)))
+                pygame.draw.line(self.surface, self.base_color,
+                                 wheel_pos, (end_x, end_y), w)
+            return
+
         # Preferir o ICR global já calculado pelo veículo (fixo no mundo)
         # se disponível; caso contrário, calcule localmente.
         if getattr(self.vehicle, 'icr_global', None) is not None:

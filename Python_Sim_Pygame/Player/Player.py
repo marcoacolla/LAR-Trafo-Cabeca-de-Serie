@@ -206,7 +206,7 @@ class Player:
         # progress any in-progress transition first
         self.update_transition()
         # block inputs during transition or if dead
-        if self.state != 'vivo' or self.is_transitioning:
+        if self.is_transitioning:
             return
         if self.curve_mode == "straight":
             if keys[pygame.K_a] or keys[pygame.K_d]:  # esquerda
@@ -258,8 +258,19 @@ class Player:
                 self.makeMovement("backward", step=speed)
 
             if self.curve_mode == "curve":
+                # If the requested angle_offset goes beyond allowed radius,
+                # switch back to straight mode immediately (not via toggle_mode
+                # which cycles through unrelated modes). This avoids a visual
+                # glitch caused by an unintended transition path.
                 if nextStep > GLV.CURVE_MAX_RADIUS or nextStep < -GLV.CURVE_MAX_RADIUS:
-                    self.toggle_mode()
+                    # force immediate switch to straight; clear angle offset
+                    try:
+                        self.setMode('straight')
+                    except Exception:
+                        # fallback to direct assignment if setMode fails
+                        self.curve_mode = 'straight'
+                    self.angle_offset = 0
+                    nextStep = 0
                     
                 if nextStep >= GLV.CURVE_MIN_RADIUS or nextStep <= -GLV.CURVE_MIN_RADIUS:
                     self.angle_offset = nextStep
