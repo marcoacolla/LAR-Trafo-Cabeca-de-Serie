@@ -90,6 +90,11 @@ camera = Camera(800, 600)
 player = Player(SPAWN_POINT, screen, camera)
 from World.Trafo import Trafo
 
+# Hardcore mode: when True, death is blocking and player cannot move until respawn.
+# When False, death shows an overlay but player can still move; if the player
+# exits the collision area the death state is cleared.
+hardcore_mode = False
+
 # spawn a trafo at blue marker if present, otherwise use a fallback near player
 blue_found = find_blue_center(map_image)
 if blue_found:
@@ -351,129 +356,157 @@ while running:
         pass
 
 
-    if player.state == 'vivo':
-        # Collision check handling the new hitbox format: a list of parts
-        # Each part is either ("wheel", polygon) or ("edge", (p1, p2)).
-        import math
+    # Always perform collision checks so we can clear death in non-hardcore mode
+    # Collision check handling the new hitbox format: a list of parts
+    # Each part is either ("wheel", polygon) or ("edge", (p1, p2)).
+    import math
 
-        def point_in_poly(x, y, poly):
-            # ray-casting algorithm
-            inside = False
-            j = len(poly) - 1
-            for i in range(len(poly)):
-                xi, yi = poly[i]
-                xj, yj = poly[j]
-                intersect = ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi + 1e-12) + xi)
-                if intersect:
-                    inside = not inside
-                j = i
-            return inside
+    def point_in_poly(x, y, poly):
+        # ray-casting algorithm
+        inside = False
+        j = len(poly) - 1
+        for i in range(len(poly)):
+            xi, yi = poly[i]
+            xj, yj = poly[j]
+            intersect = ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi + 1e-12) + xi)
+            if intersect:
+                inside = not inside
+            j = i
+        return inside
 
-        def check_poly_collision(poly):
-            # compute integer bounding box of polygon to limit work
-            xs = [p[0] for p in poly]
-            ys = [p[1] for p in poly]
-            minx = max(int(math.floor(min(xs))), 0)
-            maxx = min(int(math.ceil(max(xs))), map_image.get_width() - 1)
-            miny = max(int(math.floor(min(ys))), 0)
-            maxy = min(int(math.ceil(max(ys))), map_image.get_height() - 1)
+    def check_poly_collision(poly):
+        # compute integer bounding box of polygon to limit work
+        xs = [p[0] for p in poly]
+        ys = [p[1] for p in poly]
+        minx = max(int(math.floor(min(xs))), 0)
+        maxx = min(int(math.ceil(max(xs))), map_image.get_width() - 1)
+        miny = max(int(math.floor(min(ys))), 0)
+        maxy = min(int(math.ceil(max(ys))), map_image.get_height() - 1)
 
-            for px in range(minx, maxx + 1):
-                for py in range(miny, maxy + 1):
-                    world_x = px + 0.5
-                    world_y = py + 0.5
-                    if point_in_poly(world_x, world_y, poly):
-                        map_x = int(world_x)
-                        map_y = int(world_y)
-                        if not (0 <= map_x < map_image.get_width() and 0 <= map_y < map_image.get_height()):
-                            continue
-                        try:
-                            if collision_grid[map_y][map_x]:
-                                return True
-                        except Exception:
-                            continue
-            return False
-
-        def check_line_collision(p1, p2):
-            # sample points along the line at ~1px spacing and check grid
-            x1, y1 = p1
-            x2, y2 = p2
-            dx = x2 - x1
-            dy = y2 - y1
-            length = math.hypot(dx, dy)
-            if length < 1e-6:
-                # degenerate: treat single point
-                ix, iy = int(round(x1)), int(round(y1))
-                if 0 <= ix < map_image.get_width() and 0 <= iy < map_image.get_height():
+        for px in range(minx, maxx + 1):
+            for py in range(miny, maxy + 1):
+                world_x = px + 0.5
+                world_y = py + 0.5
+                if point_in_poly(world_x, world_y, poly):
+                    map_x = int(world_x)
+                    map_y = int(world_y)
+                    if not (0 <= map_x < map_image.get_width() and 0 <= map_y < map_image.get_height()):
+                        continue
                     try:
-                        return bool(collision_grid[iy][ix])
+                        if collision_grid[map_y][map_x]:
+                            return True
                     except Exception:
-                        return False
-                return False
+                        continue
+        return False
 
-            steps = int(math.ceil(length))
-            for i in range(steps + 1):
-                t = float(i) / float(steps)
-                wx = x1 + dx * t
-                wy = y1 + dy * t
-                ix = int(wx)
-                iy = int(wy)
-                if not (0 <= ix < map_image.get_width() and 0 <= iy < map_image.get_height()):
-                    continue
+    def check_line_collision(p1, p2):
+        # sample points along the line at ~1px spacing and check grid
+        x1, y1 = p1
+        x2, y2 = p2
+        dx = x2 - x1
+        dy = y2 - y1
+        length = math.hypot(dx, dy)
+        if length < 1e-6:
+            # degenerate: treat single point
+            ix, iy = int(round(x1)), int(round(y1))
+            if 0 <= ix < map_image.get_width() and 0 <= iy < map_image.get_height():
                 try:
-                    if collision_grid[iy][ix]:
-                        return True
+                    return bool(collision_grid[iy][ix])
                 except Exception:
-                    continue
+                    return False
             return False
 
-        collided = False
-        # get the hitbox parts in world coordinates
-        parts = player.get_rotated_hitbox()
-        for kind, data in parts:
-            if collided:
-                break
+        steps = int(math.ceil(length))
+        for i in range(steps + 1):
+            t = float(i) / float(steps)
+            wx = x1 + dx * t
+            wy = y1 + dy * t
+            ix = int(wx)
+            iy = int(wy)
+            if not (0 <= ix < map_image.get_width() and 0 <= iy < map_image.get_height()):
+                continue
             try:
-                if kind == 'wheel':
-                    # data is poly (list of points)
+                if collision_grid[iy][ix]:
+                    return True
+            except Exception:
+                continue
+        return False
+
+    collided = False
+    # get the hitbox parts in world coordinates
+    parts = player.get_rotated_hitbox()
+    for kind, data in parts:
+        if collided:
+            break
+        try:
+            if kind == 'wheel':
+                # data is poly (list of points)
+                if check_poly_collision(data):
+                    player.set_dead()
+                    collided = True
+                    break
+            elif kind in ('edge', 'line', 'side'):
+                p1, p2 = data
+                if check_line_collision(p1, p2):
+                    player.set_dead()
+                    collided = True
+                    break
+            else:
+                # unknown part: if it's a polygon-like sequence assume polygon
+                if isinstance(data, (list, tuple)) and len(data) >= 3:
                     if check_poly_collision(data):
                         player.set_dead()
                         collided = True
                         break
-                elif kind in ('edge', 'line', 'side'):
-                    p1, p2 = data
-                    if check_line_collision(p1, p2):
-                        player.set_dead()
-                        collided = True
-                        break
-                else:
-                    # unknown part: if it's a polygon-like sequence assume polygon
-                    if isinstance(data, (list, tuple)) and len(data) >= 3:
-                        if check_poly_collision(data):
-                            player.set_dead()
-                            collided = True
-                            break
-            except Exception:
-                # safe fallback: ignore this part on error
-                continue
+        except Exception:
+            # safe fallback: ignore this part on error
+            continue
+
+    # If we're in permissive (non-hardcore) death and no collision is present
+    # anymore, clear the dead state so the overlay disappears and the player
+    # can continue normally.
+    if not collided and player.is_dead() and not hardcore_mode:
+        try:
+            player.set_alive()
+        except Exception:
+            pass
 
     if player.is_dead():
-        def reset_player():
-            # drop trafo (if carried) and reset it to its initial spawn
+        if hardcore_mode:
+            # blocking death screen (original behavior)
+            def reset_player():
+                # drop trafo (if carried) and reset it to its initial spawn
+                try:
+                    if hasattr(trafo, 'picked') and trafo.picked:
+                        trafo.drop()
+                    if hasattr(trafo, 'initial_pos'):
+                        ix, iy = trafo.initial_pos
+                        trafo.x = ix
+                        trafo.y = iy
+                        trafo.picked = False
+                        trafo.carrier = None
+                except Exception:
+                    pass
+                player.respawn(SPAWN_POINT)
+            camera.death_screen(screen, player, reset_player)
+            continue
+        else:
+            # permissive death: show a non-blocking overlay but allow movement.
             try:
-                if hasattr(trafo, 'picked') and trafo.picked:
-                    trafo.drop()
-                if hasattr(trafo, 'initial_pos'):
-                    ix, iy = trafo.initial_pos
-                    trafo.x = ix
-                    trafo.y = iy
-                    trafo.picked = False
-                    trafo.carrier = None
+                fonte = pygame.font.SysFont(None, 48)
+                texto = fonte.render('Você morreu! (modo permissivo) Mova para sair.', True, (255, 0, 0))
+                # semi-transparent background
+                bg_w = texto.get_width() + 40
+                bg_h = texto.get_height() + 24
+                bg_surf = pygame.Surface((bg_w, bg_h), pygame.SRCALPHA)
+                bg_surf.fill((0, 0, 0, 150))
+                sx = screen.get_width()//2 - bg_w//2
+                sy = screen.get_height()//2 - bg_h//2
+                screen.blit(bg_surf, (sx, sy))
+                screen.blit(texto, (sx + 20, sy + 12))
             except Exception:
                 pass
-            player.respawn(SPAWN_POINT)
-        camera.death_screen(screen, player, reset_player)
-        continue
+            # Do not continue; allow loop to run so player can move out of collision.
 
 
     pygame.display.flip()
