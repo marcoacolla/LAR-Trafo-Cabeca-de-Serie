@@ -157,6 +157,25 @@ while running:
         pass
     prev_keys = keys
 
+    # Zoom controls (j = zoom out, k = zoom in)
+    try:
+        # zoom amount per frame scaled by dt so it's framerate independent
+        ZOOM_SPEED = 0.04
+        MIN_SCALE = 0.25
+        MAX_SCALE = 4.0
+        zoom_changed = False
+        if keys[pygame.K_j]:
+            camera.scale = max(MIN_SCALE, camera.scale - ZOOM_SPEED * (dt / 16.0))
+            zoom_changed = True
+        if keys[pygame.K_k]:
+            camera.scale = min(MAX_SCALE, camera.scale + ZOOM_SPEED * (dt / 16.0))
+            zoom_changed = True
+        if zoom_changed:
+            # re-center camera when zoom changes
+            camera.update(player)
+    except Exception:
+        pass
+
     # compute movement speed from player base and current speed multiplier
     try:
         move_speed = player.base_speed * player.get_speed_multiplier()
@@ -286,7 +305,11 @@ while running:
             if trafo_collision:
                 player.set_dead()
             else:
-                picked = player.try_pickup(trafo)
+                # Use player's own pickup logic (works in world coords)
+                try:
+                    picked = player.try_pickup(trafo)
+                except Exception:
+                    picked = False
                 if picked:
                     print('Trafo picked up!')
     except Exception:
