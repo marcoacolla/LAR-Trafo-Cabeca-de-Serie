@@ -89,11 +89,27 @@ else:
 camera = Camera(800, 600)
 player = Player(SPAWN_POINT, screen, camera)
 from World.Trafo import Trafo
+# optional joystick controller (provided in Player/Joystick.py)
+try:
+    from Player.Joystick import Joystick as JoystickController
+except Exception:
+    JoystickController = None
 
 # Hardcore mode: when True, death is blocking and player cannot move until respawn.
 # When False, death shows an overlay but player can still move; if the player
 # exits the collision area the death state is cleared.
 hardcore_mode = False
+
+# control mode for input: 'keyboard' or 'joystick'
+control_mode = 'keyboard'
+joystick_controller = None
+if JoystickController is not None:
+    try:
+        joystick_controller = JoystickController()
+    except Exception:
+        joystick_controller = None
+# last printed control mode to avoid repeated logs
+last_printed_control_mode = control_mode
 
 # spawn a trafo at blue marker if present, otherwise use a fallback near player
 blue_found = find_blue_center(map_image)
@@ -140,6 +156,17 @@ while running:
     try:
         if keys[pygame.K_SPACE] and not prev_keys[pygame.K_SPACE]:
             player.toggle_mode()
+        # toggle control mode between keyboard and joystick (press C)
+        if keys[pygame.K_c] and not prev_keys[pygame.K_c]:
+            if control_mode == 'keyboard':
+                # try enable joystick only if controller instance available
+                if joystick_controller is not None:
+                    control_mode = 'joystick'
+                else:
+                    # inform user but don't switch state
+                    print('Joystick not available; staying in KEYBOARD mode')
+            else:
+                control_mode = 'keyboard'
         # speed mode shortcuts: 1 = rápida (100%), 2 = média (60%), 3 = lenta (30%)
         if keys[pygame.K_1] and not prev_keys[pygame.K_1]:
             try:
@@ -186,7 +213,21 @@ while running:
         move_speed = player.base_speed * player.get_speed_multiplier()
     except Exception:
         move_speed = 3
-    player.move(keys, speed=move_speed)
+    # If joystick control is active and we have a controller instance, use joystick inputs
+    try:
+        if control_mode == 'joystick' and joystick_controller is not None:
+            try:
+                lx, ly, rx, ry = joystick_controller.getJoystickValues()
+                player.move_with_joystick((lx, ly, rx, ry), speed=move_speed)
+            except Exception:
+                # if joystick access fails at runtime, fall back to keyboard
+                control_mode = 'keyboard'
+                print('Joystick error: reverting to KEYBOARD control')
+                player.move(keys, speed=move_speed)
+        else:
+            player.move(keys, speed=move_speed)
+    except Exception:
+        player.move(keys, speed=move_speed)
 
     # Atualiza câmera antes de desenhar (offset/scale)
     camera.update(player)
@@ -363,6 +404,16 @@ while running:
         screen.blit(bg_surf, (x - padding, y - padding//2))
 
         screen.blit(mode_text, (x, y))
+        # draw control mode + zoom + hardcore state at top-left for quick debug
+        try:
+            hud_text = font.render(f'Control: {control_mode.upper()}  Zoom: {camera.scale:.2f}  Hardcore: {"ON" if hardcore_mode else "OFF"}', True, (255,255,255))
+            screen.blit(hud_text, (8, 8))
+            # print control mode change only once to avoid log spam
+            if control_mode != last_printed_control_mode:
+                print(f'Control mode: {control_mode.upper()}')
+                last_printed_control_mode = control_mode
+        except Exception:
+            pass
         # Delegate icamento UI drawing to Player
         try:
             if hasattr(player, 'draw_icamento_ui'):

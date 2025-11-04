@@ -322,6 +322,93 @@ class Player:
         for wheel in self.wheels:
             wheel.setPosition((self.x, self.y))
 
+    def move_with_joystick(self, axes, speed=5):
+        """Control the player using joystick axes.
+        axes: (left_x, left_y, right_x, right_y)
+        left_y controls forward/back movement (axis centered at 0).
+        left_x controls angle_offset (mapped to CURVE_MAX_RADIUS) when in curve modes.
+        right_x controls icr_bias (mapped from -1..1 -> 0..1).
+        For icamento mode left_y moves the cursor up/down.
+        """
+        lx, ly, rx, ry = axes
+        # small deadzone to avoid drift
+        DEAD = 0.12
+
+        # Progress any in-progress transition first
+        self.update_transition()
+        if self.is_transitioning:
+            return
+
+        # Movement magnitude scaled by axis |ly|
+        move_amt = 0.0
+        if abs(ly) > DEAD:
+            # assume joystick up is negative (common convention); treat negative as forward
+            move_amt = min(1.0, abs(ly))
+
+        # Map right_x (-1..1) to icr_bias (0..1)
+        try:
+            self.icr_bias = max(0.0, min(1.0, (rx + 1.0) / 2.0))
+        except Exception:
+            pass
+
+        # Mode-specific handling
+        if self.curve_mode == 'straight':
+            if move_amt > 0:
+                if ly < 0:
+                    self.makeMovement('forward', step=speed * move_amt)
+                else:
+                    self.makeMovement('backward', step=speed * move_amt)
+
+        elif self.curve_mode in ('curve', 'pivotal'):
+            # Map left_x to angle_offset
+            try:
+                new_offset = lx * GLV.CURVE_MAX_RADIUS
+                # clamp
+                new_offset = max(-GLV.CURVE_MAX_RADIUS, min(GLV.CURVE_MAX_RADIUS, new_offset))
+                self.angle_offset = new_offset
+            except Exception:
+                pass
+
+            # update icr and steering when bias/angle change
+            try:
+                self.icr_global = self.curvature.computeICR(angle_offset=self.angle_offset)
+                self.steerWheels('curve', angle_offset=self.angle_offset, icr_bias=self.icr_bias)
+            except Exception:
+                pass
+
+            if move_amt > 0:
+                if ly < 0:
+                    self.makeMovement('forward', step=speed * move_amt)
+                else:
+                    self.makeMovement('backward', step=speed * move_amt)
+
+        elif self.curve_mode == 'diagonal':
+            # allow rotation of wheel headings via left_x and movement via left_y
+            if abs(lx) > DEAD:
+                WHEEL_TURN_STEP = 5.0 * lx
+                for w in self.wheels:
+                    w.setHeading((w.getHeading() + WHEEL_TURN_STEP) % 360)
+            if move_amt > 0:
+                if ly < 0:
+                    self.makeMovement('forward', step=speed * move_amt)
+                else:
+                    self.makeMovement('backward', step=speed * move_amt)
+
+        elif self.curve_mode == 'icamento':
+            # left_y moves the cursor; also moves vehicle
+            CURSOR_SENS = 0.035
+            if abs(ly) > DEAD:
+                # negative ly -> move up (decrease cursor)
+                self.icamento_cursor = max(0.0, min(1.0, self.icamento_cursor + (-ly) * CURSOR_SENS))
+                if ly < 0:
+                    self.makeMovement('forward', step=speed * move_amt)
+                else:
+                    self.makeMovement('backward', step=speed * move_amt)
+
+        # sync wheel positions
+        for wheel in self.wheels:
+            wheel.setPosition(self.getPosition())
+
     def set_dead(self):
         self.state = 'morto'
 
@@ -773,10 +860,13 @@ class Player:
             wheel.setPosition(self.getPosition())
 
     def draw_icamento_ui(self, screen):
-        """Draw the icamento UI: a vertical yellow bar on the right and a gray cursor."""
-        # only draw when in icamento mode
-        if self.curve_mode != 'icamento':
-            return
+        """Draw the icamento UI: a vertical yellow bar on the right and a gray cursor.
+        This UI is now always visible; when not active (not in 'icamento' mode) it
+        is drawn dimmed to indicate inactivity but still shows the current cursor
+        position for reference.
+        """
+        # determine whether the icamento mode is currently active
+        active = (self.curve_mode == 'icamento')
         try:
             # UI dimensions (screen-space)
             bar_w = 48
@@ -789,7 +879,7 @@ class Player:
             # make the gray rect slightly narrower than the yellow bar (more subtle)
             gray_w = max(8, bar_w - 8)
             # gray height equal to bar_h
-            gray_h = bar_h
+            gray_h = bar_h 
 
             # compute vertical range for gray's top position
             # min_top: almost completely inside the yellow bar, only a small head visible
@@ -801,18 +891,44 @@ class Player:
             min_top += offset_down
             # max_top: half of the gray rect outside the yellow (i.e., gray top such that
             # half the gray extends below the bar)
-            max_top = bar_y + bar_h - (gray_h // 2) + offset_down
+            #max_top = bar_y + bar_h - (gray_h // 2) + offset_down
 
             # interpolate top position by icamento_cursor (0..1) - only vertical movement
-            gray_top = int(min_top + (max_top - min_top) * self.icamento_cursor)
+            #gray_top = int(min_top + (max_top - min_top) * self.icamento_cursor)
 
             # center gray horizontally behind the yellow bar
             gray_x = bar_x + (bar_w // 2) - (gray_w // 2)
 
-            pygame.draw.rect(screen, (120, 120, 120), (gray_x, gray_top, gray_w, gray_h))
+            # draw gray background bar (static)
+            pygame.draw.rect(screen, (120, 120, 120), (gray_x, bar_y, gray_w, gray_h))
 
-            # draw yellow bar on top
-            pygame.draw.rect(screen, (220, 180, 20), (bar_x, bar_y, bar_w, bar_h))
+            # draw moving yellow rectangle on top to create illusion of the gray
+            # sliding down while the yellow moves up. The yellow rect is narrower
+            # vertically and moves between min_top..max_top as icamento_cursor changes.
+            # make yellow taller so that at its lowest position it covers the gray
+            yellow_h = bar_h #max(20, min(bar_h, int(bar_h * 0.85)))
+            min_yellow_top = bar_y + bar_h - yellow_h  # bottom-aligned position
+            max_yellow_top = bar_y - int(bar_h * 0.18)  # allow moving above the bar a bit
+            # interpolate top by icamento_cursor so that increasing cursor moves yellow up
+            yellow_top = int(min_yellow_top + (max_yellow_top - min_yellow_top) * float(self.icamento_cursor))
+            yellow_x = bar_x + (bar_w // 2) - (bar_w // 2)
+
+            if active:
+                yellow_col = (220, 180, 20)
+            else:
+                yellow_col = (120, 100, 12)
+            pygame.draw.rect(screen, yellow_col, (bar_x, yellow_top, bar_w, yellow_h))
+
+            # if active and cursor >= 0.8 show a small READY indicator near the bar
+            try:
+                if active and self.icamento_cursor >= 0.8:
+                    f = pygame.font.SysFont(None, 18)
+                    txt = f.render('ICAMENTO READY', True, (40, 200, 40))
+                    tx = bar_x - txt.get_width() - 8
+                    ty = bar_y + bar_h - txt.get_height() - 8
+                    screen.blit(txt, (tx, ty))
+            except Exception:
+                pass
         except Exception:
             pass
 

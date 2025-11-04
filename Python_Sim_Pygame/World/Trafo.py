@@ -1,4 +1,5 @@
 import pygame
+import math
 
 
 class Trafo:
@@ -35,8 +36,27 @@ class Trafo:
     def update(self, dt=0):
         # If carried, follow carrier
         if self.picked and self.carrier is not None:
-            # keep at carrier center for now (could add offset)
-            self.x, self.y = self.carrier.getPosition()
+            # follow carrier but keep the attachment offset (in carrier-local coords)
+            try:
+                px, py = self.carrier.getPosition()
+                # attachment offset stored in local coordinates when picked
+                if hasattr(self, 'attach_offset_local') and self.attach_offset_local is not None:
+                    lx, ly = self.attach_offset_local
+                    theta = getattr(self.carrier, 'getHeading', lambda: 0)()
+                    th = math.radians(theta)
+                    cos_t = math.cos(th)
+                    sin_t = math.sin(th)
+                    # rotate local offset back to world and add to carrier position
+                    wx = px + (lx * cos_t - ly * sin_t)
+                    wy = py + (lx * sin_t + ly * cos_t)
+                    self.x, self.y = wx, wy
+                else:
+                    self.x, self.y = px, py
+            except Exception:
+                try:
+                    self.x, self.y = self.carrier.getPosition()
+                except Exception:
+                    pass
 
     def draw(self, surface, camera_or_offset=(0, 0)):
         # draw square in world coordinates; camera_or_offset may be Camera or (x,y)
@@ -54,7 +74,26 @@ class Trafo:
     def pick(self, player):
         self.picked = True
         self.carrier = player
+        # compute attachment offset in player's local coordinates so the trafo
+        # preserves its relative placement even if the player rotates.
+        try:
+            px, py = player.getPosition()
+            dx = self.x - px
+            dy = self.y - py
+            theta = getattr(player, 'getHeading', lambda: 0)()
+            th = math.radians(theta)
+            # local = R(-theta) * (dx,dy)
+            lx = dx * math.cos(th) + dy * math.sin(th)
+            ly = -dx * math.sin(th) + dy * math.cos(th)
+            self.attach_offset_local = (lx, ly)
+        except Exception:
+            self.attach_offset_local = (0.0, 0.0)
 
     def drop(self):
         self.picked = False
         self.carrier = None
+        try:
+            if hasattr(self, 'attach_offset_local'):
+                del self.attach_offset_local
+        except Exception:
+            pass
