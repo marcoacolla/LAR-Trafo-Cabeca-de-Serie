@@ -90,10 +90,8 @@ camera = Camera(800, 600)
 player = Player(SPAWN_POINT, screen, camera)
 from World.Trafo import Trafo
 # optional joystick controller (provided in Player/Joystick.py)
-try:
-    from Player.Joystick import Joystick as JoystickController
-except Exception:
-    JoystickController = None
+
+from Player.Joystick import Joystick as JoystickController
 
 # Hardcore mode: when True, death is blocking and player cannot move until respawn.
 # When False, death shows an overlay but player can still move; if the player
@@ -102,12 +100,12 @@ hardcore_mode = False
 
 # control mode for input: 'keyboard' or 'joystick'
 control_mode = 'keyboard'
-joystick_controller = None
-if JoystickController is not None:
-    try:
-        joystick_controller = JoystickController()
-    except Exception:
-        joystick_controller = None
+joystick_controller = JoystickController()
+# prefer explicit availability flag from the adapter
+try:
+    joystick_available = bool(getattr(joystick_controller, 'available', False))
+except Exception:
+    joystick_available = False
 # last printed control mode to avoid repeated logs
 last_printed_control_mode = control_mode
 
@@ -149,6 +147,19 @@ while running:
             pygame.joystick.init()
         except Exception:
             pass
+    # poll CAN joystick (if present) to update its internal state
+    try:
+        if getattr(joystick_controller, 'available', False) and hasattr(joystick_controller, 'poll'):
+            try:
+                joystick_controller.poll()
+            except Exception:
+                # if poll fails, mark unavailable so toggle won't try to use it
+                try:
+                    joystick_controller.available = False
+                except Exception:
+                    pass
+    except Exception:
+        pass
 
     keys = pygame.key.get_pressed()
     if 'prev_keys' not in globals():
@@ -159,8 +170,8 @@ while running:
         # toggle control mode between keyboard and joystick (press C)
         if keys[pygame.K_c] and not prev_keys[pygame.K_c]:
             if control_mode == 'keyboard':
-                # try enable joystick only if controller instance available
-                if joystick_controller is not None:
+                # try enable joystick only if controller reported available
+                if joystick_available:
                     control_mode = 'joystick'
                 else:
                     # inform user but don't switch state
@@ -213,16 +224,22 @@ while running:
         move_speed = player.base_speed * player.get_speed_multiplier()
     except Exception:
         move_speed = 3
-    # If joystick control is active and we have a controller instance, use joystick inputs
+    # If joystick control is active and controller reports available, use joystick inputs
     try:
-        if control_mode == 'joystick' and joystick_controller is not None:
-            try:
-                lx, ly, rx, ry = joystick_controller.getJoystickValues()
-                player.move_with_joystick((lx, ly, rx, ry), speed=move_speed)
-            except Exception:
-                # if joystick access fails at runtime, fall back to keyboard
+        if control_mode == 'joystick':
+            if getattr(joystick_controller, 'available', False):
+                try:
+                    lx, ly, rx, ry = joystick_controller.getJoystickValues()
+                    player.move_with_joystick((lx, ly, rx, ry), speed=move_speed)
+                except Exception:
+                    # if joystick access fails at runtime, fall back to keyboard
+                    control_mode = 'keyboard'
+                    print('Joystick error: reverting to KEYBOARD control')
+                    player.move(keys, speed=move_speed)
+            else:
+                # joystick not available at runtime; fall back
                 control_mode = 'keyboard'
-                print('Joystick error: reverting to KEYBOARD control')
+                print('Joystick not available at runtime; switching to KEYBOARD')
                 player.move(keys, speed=move_speed)
         else:
             player.move(keys, speed=move_speed)
