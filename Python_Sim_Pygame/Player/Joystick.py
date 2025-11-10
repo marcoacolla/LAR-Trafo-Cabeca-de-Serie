@@ -20,6 +20,7 @@ try:
 except Exception:
     can = None
 from Player import GLV as GVL
+import Player.Player as player
 
 
 class Joystick:

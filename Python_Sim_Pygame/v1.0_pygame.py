@@ -152,10 +152,45 @@ while running:
         if getattr(joystick_controller, 'available', False) and hasattr(joystick_controller, 'poll'):
             try:
                 joystick_controller.poll()
+                player.lights = joystick_controller.lights
             except Exception:
                 # if poll fails, mark unavailable so toggle won't try to use it
                 try:
                     joystick_controller.available = False
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    # Process selector (mode) messages from CAN joystick adapter if changed
+    try:
+        if getattr(joystick_controller, 'available', False) and getattr(joystick_controller, 'hasChangedMode', False):
+            try:
+                sel = getattr(joystick_controller, 'currentMode', 0)
+                # Map selector values to internal mode names (follow turtle app logic)
+                mode_map = {
+                    1: 'straight',
+                    2: 'diagonal',
+                    4: 'pivotal',
+                    8: 'içamento'
+                }
+                new_mode = mode_map.get(sel)
+                if new_mode:
+                    try:
+                        player.setMode(new_mode)
+                    except Exception:
+                        pass
+                    # Try to update any UI adapter if present (optional)
+                    try:
+                        ui_obj = globals().get('ui')
+                        if ui_obj is not None and hasattr(ui_obj, 'update_mode_display'):
+                            ui_obj.update_mode_display(new_mode)
+                    except Exception:
+                        pass
+            finally:
+                # clear change flag so we don't reprocess the same selection
+                try:
+                    joystick_controller.hasChangedMode = False
                 except Exception:
                     pass
     except Exception:

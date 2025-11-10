@@ -36,8 +36,8 @@ class Player:
         self.heading = 0
         self.camera = camera
         self.modes = ["straight", "curve", "pivotal", "diagonal"]
-        self.lights = [True, False, False, True]  # Estado das luzes (4 luzes)
-        self.sirene = True  # Estado da sirene (ligada/desligada)
+        self.lights = [False, False, False, False, False]  # Estado das luzes (4 luzes)
+        self.sirene = False  # Estado da sirene (ligada/desligada)
         
 
         self.icr_global = None  # Centro Instantâneo de Rotação (ICR) global
@@ -106,21 +106,21 @@ class Player:
             (-8, -13, (255, 0, 0), self.lights[0],0),   # vermelho esquerdo
             (8, -13, (255, 0, 0), self.lights[0],0),    # vermelho direito
 
-            (0, 0, (0, 0, 255), self.sirene,0),      # azul no centro
+            (0, 0, (0, 0, 255), self.lights[3],0),      # azul no centro
 
-            (-8,0, (255,200,0), self.lights[1],0),
-            (8,0, (255,200,0), self.lights[1],0),
+            (-8,0, (255,200,0), self.lights[2],0),
+            (8,0, (255,200,0), self.lights[2],0),
 
-            (-8, 13, (0, 225, 0), self.lights[2],0),    # verde esquerdo
-            (8, 13, (0, 225, 0), self.lights[2],0),     # verde direito
-
-
+            (-8, 13, (0, 225, 0), self.lights[1],0),    # verde esquerdo
+            (8, 13, (0, 225, 0), self.lights[1],0),     # verde direito
 
 
-            (12, 45, (200, 200, 255), self.lights[3], 15),
-            (-12, 45, (200, 200, 255), self.lights[3], 15), # branco
-            (12, -45, (200, 200, 255), self.lights[3], 15),
-            (-12, -45, (200, 200, 255), self.lights[3], 15), 
+
+
+            (12, 45, (200, 200, 255), self.lights[4], 15),
+            (-12, 45, (200, 200, 255), self.lights[4], 15), # branco
+            (12, -45, (200, 200, 255), self.lights[4], 15),
+            (-12, -45, (200, 200, 255), self.lights[4], 15), 
         ]
 
         # Dimensões da barra (largura x altura)
@@ -355,16 +355,36 @@ class Player:
         if self.curve_mode == 'straight':
             if move_amt > 0:
                 if ly < 0:
-                    self.makeMovement('forward', step=speed * move_amt)
-                else:
                     self.makeMovement('backward', step=speed * move_amt)
+                else:
+                    self.makeMovement('forward', step=speed * move_amt)
+            if abs(lx) > DEAD:
+                # switch to curve mode with angle_offset mapped from left_x
+                try:
+                    usedLx = max((math.sqrt(2)/2), lx)
+                    new_offset = lx * GLV.CURVE_MAX_RADIUS
+                    # clamp
+                    new_offset = max(-GLV.CURVE_MAX_RADIUS, min(GLV.CURVE_MAX_RADIUS, new_offset))
+                    self.setMode('curve', curveStart=new_offset)
+                    self.angle_offset = new_offset
+                except Exception:
+                    pass
 
-        elif self.curve_mode in ('curve', 'pivotal'):
+        elif self.curve_mode == "curve":
+            if abs(lx) < DEAD:
+                self.setMode('straight')
             # Map left_x to angle_offset
             try:
-                new_offset = lx * GLV.CURVE_MAX_RADIUS
-                # clamp
-                new_offset = max(-GLV.CURVE_MAX_RADIUS, min(GLV.CURVE_MAX_RADIUS, new_offset))
+                # módulo de lx entre 0 e 1
+                mag = abs(lx)
+                expo = 2.5
+                mag = mag ** (1/expo)
+                # interpolação invertida: mag=0 → max, mag=1 → min
+                radius = GLV.CURVE_MAX_RADIUS - (GLV.CURVE_MAX_RADIUS - GLV.CURVE_MIN_RADIUS) * mag
+                print(lx, radius)
+                # aplica o sinal de lx (pra direita/esquerda)
+                new_offset = math.copysign(radius, -lx)
+
                 self.angle_offset = new_offset
             except Exception:
                 pass
@@ -377,10 +397,16 @@ class Player:
                 pass
 
             if move_amt > 0:
-                if ly < 0:
-                    self.makeMovement('forward', step=speed * move_amt)
+                if lx < 0:
+                    if ly < 0 :
+                        self.makeMovement('forward', step=speed * move_amt)
+                    else:
+                        self.makeMovement('backward', step=speed * move_amt)
                 else:
-                    self.makeMovement('backward', step=speed * move_amt)
+                    if ly < 0 :
+                        self.makeMovement('backward', step=speed * move_amt)
+                    else:
+                        self.makeMovement('forward', step=speed * move_amt)
 
         elif self.curve_mode == 'diagonal':
             # allow rotation of wheel headings via left_x and movement via left_y
@@ -390,9 +416,9 @@ class Player:
                     w.setHeading((w.getHeading() + WHEEL_TURN_STEP) % 360)
             if move_amt > 0:
                 if ly < 0:
-                    self.makeMovement('forward', step=speed * move_amt)
-                else:
                     self.makeMovement('backward', step=speed * move_amt)
+                else:
+                    self.makeMovement('forward', step=speed * move_amt)
 
         elif self.curve_mode == 'icamento':
             # left_y moves the cursor; also moves vehicle
