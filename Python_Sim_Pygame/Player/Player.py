@@ -461,6 +461,16 @@ class Player:
         self.state = 'morto'
 
     def set_alive(self, x=None, y=None):
+        # Respect any death lock set by external logic (e.g. trafo-caused death)
+        try:
+            now = pygame.time.get_ticks()
+            if getattr(self, 'death_lock_until', 0) > now:
+                # still locked; ignore attempts to revive
+                return
+        except Exception:
+            # if pygame isn't available for timing, fall back to immediate revive
+            pass
+
         self.state = 'vivo'
         if x is not None and y is not None:
             self.x = x

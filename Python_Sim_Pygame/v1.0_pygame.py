@@ -130,6 +130,8 @@ else:
 
 clock = pygame.time.Clock()
 running = True
+# timestamp (ms) until which a trafo-caused death should be preserved to avoid flicker
+trafo_death_expire = 0
 while running:
     dt = clock.tick(60)
     # Use event.pump() + key polling instead of pygame.event.get() to avoid
@@ -161,6 +163,9 @@ while running:
                     pass
     except Exception:
         pass
+
+    # flag to indicate death caused by trafo this frame (prevents immediate clearing)
+    trafo_caused_death = False
 
     # Process selector (mode) messages from CAN joystick adapter if changed
     try:
@@ -390,18 +395,125 @@ while running:
             trafo_rect = trafo.get_collision_rect() if hasattr(trafo, 'get_collision_rect') else trafo.get_rect()
             parts = player.get_rotated_hitbox()
             trafo_collision = False
-            for kind, data in parts:
+            # Determine forward vector from player's heading to identify front edge
+            try:
+                px, py = player.getPosition()
+                heading_rad = math.radians(player.getHeading())
+                forward_vec = (math.sin(heading_rad), -math.cos(heading_rad))
+            except Exception:
+                px = py = 0.0
+                forward_vec = (0.0, -1.0)
+
+            # Prepare debug logging when trafo is near player to diagnose missed collisions
+            debug_near = False
+            try:
+                dx = trafo.x - px
+                dy = trafo.y - py
+                dist = math.hypot(dx, dy)
+                # only enable verbose debug when within reasonable proximity to avoid spam
+                debug_near = dist < 400
+            except Exception:
+                debug_near = False
+
+            # collect diagnostics to report if no collision is found
+            diag_wheels = []
+            diag_edges = []
+
+            for idx, (kind, data) in enumerate(parts):
                 if kind == 'wheel':
-                    if poly_rect_collision(data, trafo_rect):
+                    # wheel polygons are lethal. Use polygon/rect test first,
+                    # then fallback to axis-aligned bounding-box (AABB) test
+                    try:
+                        hit = poly_rect_collision(data, trafo_rect)
+                    except Exception:
+                        hit = False
+
+                    reason = 'poly'
+                    if not hit:
+                        try:
+                            xs = [p[0] for p in data]
+                            ys = [p[1] for p in data]
+                            wmin = min(xs); wmax = max(xs)
+                            hmin = min(ys); hmax = max(ys)
+                            wheel_aabb = pygame.Rect(wmin, hmin, wmax - wmin, hmax - hmin)
+                            if wheel_aabb.colliderect(trafo_rect):
+                                hit = True
+                                reason = 'aabb'
+                        except Exception:
+                            hit = False
+
+                    diag_wheels.append({
+                        'idx': idx,
+                        'hit': hit,
+                        'reason': reason,
+                        'aabb': (locals().get('wmin', None), locals().get('wmax', None), locals().get('hmin', None), locals().get('hmax', None))
+                    })
+
+                    if hit:
+                        try:
+                            if debug_near:
+                                #print(f"[TRAFO DEBUG] wheel idx={idx} collision detected ({reason})")
+                                pass
+                        except Exception:
+                            pass
                         trafo_collision = True
                         break
-                elif kind in ('edge', 'line'):
-                    p1, p2 = data
-                    if line_rect_collision(p1, p2, trafo_rect):
-                        trafo_collision = True
-                        break
+
+                elif kind == 'edge' or kind == 'line':
+                    # Only the front-facing edge should be lethal; determine
+                    # frontness by midpoint dot with forward vector.
+                    try:
+                        p1, p2 = data
+                        midx = (p1[0] + p2[0]) * 0.5
+                        midy = (p1[1] + p2[1]) * 0.5
+                        vx = midx - px
+                        vy = midy - py
+                        dot = vx * forward_vec[0] + vy * forward_vec[1]
+                        is_front = dot > 0
+                        diag_edges.append({'p1': p1, 'p2': p2, 'midx': midx, 'midy': midy, 'dot': dot, 'is_front': is_front})
+                        if is_front:
+                            if line_rect_collision(p1, p2, trafo_rect):
+                                try:
+                                    if debug_near:
+                                        #print(f"[TRAFO DEBUG] front edge collision at midpoint=({midx:.1f},{midy:.1f}) dot={dot:.2f}")
+                                        pass
+                                except Exception:
+                                    pass
+                                trafo_collision = True
+                                break
+                    except Exception:
+                        # ignore and continue
+                        pass
+
+            # If we didn't detect collision but debug_near is True, print diagnostics
+            if (not trafo_collision) and debug_near:
+                try:
+                    #print("[TRAFO DEBUG] no lethal collision detected. Diagnostics:")
+                    #print(f"  trafo_rect={trafo_rect}")
+                    #print(f"  player_pos=({px:.1f},{py:.1f}), forward={forward_vec}")
+                    for w in diag_wheels:
+                        pass
+                    for e in diag_edges:
+                        pass
+                except Exception:
+                    pass
             if trafo_collision:
-                player.set_dead()
+                    try:
+                        player.set_dead()
+                        trafo_caused_death = True
+                        # preserve death state for a short time to avoid flicker (500 ms)
+                        try:
+                            expire = pygame.time.get_ticks() + 500
+                            trafo_death_expire = expire
+                            # also set lock on player to prevent any immediate revival
+                            try:
+                                player.death_lock_until = expire
+                            except Exception:
+                                pass
+                        except Exception:
+                            trafo_death_expire = trafo_death_expire or 0
+                    except Exception:
+                        pass
             else:
                 # Use player's own pickup logic (works in world coords)
                 try:
@@ -585,7 +697,12 @@ while running:
     # If we're in permissive (non-hardcore) death and no collision is present
     # anymore, clear the dead state so the overlay disappears and the player
     # can continue normally.
-    if not collided and player.is_dead() and not hardcore_mode:
+    # respect short trafo death timeout to avoid flicker: only clear if timeout expired
+    try:
+        now_ms = pygame.time.get_ticks()
+    except Exception:
+        now_ms = 0
+    if not collided and player.is_dead() and not hardcore_mode and now_ms > trafo_death_expire:
         try:
             player.set_alive()
         except Exception:
