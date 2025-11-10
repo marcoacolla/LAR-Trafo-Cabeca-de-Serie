@@ -95,6 +95,14 @@ class Player:
     def getHeading(self):
         return self.heading  # Se quiser, pode adicionar rotação do player
     
+    def circle_to_square(lx, ly):
+
+        if lx == 0 and ly == 0:
+            return 0, 0
+        new_x = lx * math.sqrt(1 - (ly**2) / 2)
+        new_y = ly * math.sqrt(1 - (lx**2) / 2)
+        return new_x, new_y
+    
     def drawLights(self, camera_or_offset=(0,0)):
 
          # Configurações das luzes (posição local x, y e cor)
@@ -333,7 +341,8 @@ class Player:
         lx, ly, rx, ry = axes
         # small deadzone to avoid drift
         DEAD = 0.12
-
+        lx_treated, ly_treated = lx, ly
+        rx_treated, ry_treated = rx,ry
         # Progress any in-progress transition first
         self.update_transition()
         if self.is_transitioning:
@@ -341,28 +350,27 @@ class Player:
 
         # Movement magnitude scaled by axis |ly|
         move_amt = 0.0
-        if abs(ly) > DEAD:
+        if abs(ry) > DEAD:
             # assume joystick up is negative (common convention); treat negative as forward
-            move_amt = min(1.0, abs(ly))
+            move_amt = min(1.0, abs(ry_treated))
 
         # Map right_x (-1..1) to icr_bias (0..1)
         try:
-            self.icr_bias = max(0.0, min(1.0, (rx + 1.0) / 2.0))
+            self.icr_bias = max(0.0, min(1.0, (ly_treated + 1.0) / 2.0))
         except Exception:
             pass
 
         # Mode-specific handling
         if self.curve_mode == 'straight':
             if move_amt > 0:
-                if ly < 0:
+                if ry < 0:
                     self.makeMovement('backward', step=speed * move_amt)
                 else:
                     self.makeMovement('forward', step=speed * move_amt)
-            if abs(lx) > DEAD:
+            if abs(rx) > DEAD:
                 # switch to curve mode with angle_offset mapped from left_x
                 try:
-                    usedLx = max((math.sqrt(2)/2), lx)
-                    new_offset = lx * GLV.CURVE_MAX_RADIUS
+                    new_offset = rx_treated * GLV.CURVE_MAX_RADIUS
                     # clamp
                     new_offset = max(-GLV.CURVE_MAX_RADIUS, min(GLV.CURVE_MAX_RADIUS, new_offset))
                     self.setMode('curve', curveStart=new_offset)
@@ -370,24 +378,30 @@ class Player:
                 except Exception:
                     pass
 
-        elif self.curve_mode == "curve":
-            if abs(lx) < DEAD:
-                self.setMode('straight')
-            # Map left_x to angle_offset
-            try:
-                # módulo de lx entre 0 e 1
-                mag = abs(lx)
-                expo = 2.5
-                mag = mag ** (1/expo)
-                # interpolação invertida: mag=0 → max, mag=1 → min
-                radius = GLV.CURVE_MAX_RADIUS - (GLV.CURVE_MAX_RADIUS - GLV.CURVE_MIN_RADIUS) * mag
-                print(lx, radius)
-                # aplica o sinal de lx (pra direita/esquerda)
-                new_offset = math.copysign(radius, -lx)
+        elif self.curve_mode in ("curve", "pivotal"):
+            if self.curve_mode == "curve":
+                if abs(rx) < DEAD:
+                    self.setMode('straight')
+                # Map left_x to angle_offset
+                try:
+                    # módulo de lx entre 0 e 1
+                    mag = abs(rx_treated)
+                    expo = 2.5
+                    mag = mag ** (1/expo)
+                    # interpolação invertida: mag=0 → max, mag=1 → min
+                    radius = GLV.CURVE_MAX_RADIUS - (GLV.CURVE_MAX_RADIUS - GLV.CURVE_MIN_RADIUS) * mag
+                    # aplica o sinal de lx (pra direita/esquerda)
+                    new_offset = math.copysign(radius, -rx_treated)
 
-                self.angle_offset = new_offset
-            except Exception:
-                pass
+                    self.angle_offset = new_offset
+                except Exception:
+                    pass
+            else:
+                # pivotal mode: left_x controls angle_offset directly
+                if abs(rx) > DEAD:
+                    self.angle_offset = -rx_treated * GLV.CURVE_MIN_RADIUS
+                else:
+                    self.angle_offset = 0
 
             # update icr and steering when bias/angle change
             try:
@@ -395,27 +409,35 @@ class Player:
                 self.steerWheels('curve', angle_offset=self.angle_offset, icr_bias=self.icr_bias)
             except Exception:
                 pass
-
-            if move_amt > 0:
-                if lx < 0:
-                    if ly < 0 :
-                        self.makeMovement('forward', step=speed * move_amt)
+            
+            if self.curve_mode == 'curve':
+                if move_amt > 0:
+                    if rx_treated < 0:
+                        if ry_treated < 0 :
+                            self.makeMovement('forward', step=speed * move_amt)
+                        else:
+                            self.makeMovement('backward', step=speed * move_amt)
                     else:
-                        self.makeMovement('backward', step=speed * move_amt)
-                else:
-                    if ly < 0 :
+                        if ry_treated < 0 :
+                            self.makeMovement('backward', step=speed * move_amt)
+                        else:
+                            self.makeMovement('forward', step=speed * move_amt)
+            else:  # pivotal
+                move_amt = abs(lx_treated)
+                if move_amt > DEAD:
+                    if lx_treated < 0:
                         self.makeMovement('backward', step=speed * move_amt)
                     else:
                         self.makeMovement('forward', step=speed * move_amt)
 
         elif self.curve_mode == 'diagonal':
             # allow rotation of wheel headings via left_x and movement via left_y
-            if abs(lx) > DEAD:
-                WHEEL_TURN_STEP = 5.0 * lx
+            if abs(rx) > DEAD:
+                WHEEL_TURN_STEP = 5.0 * rx_treated
                 for w in self.wheels:
                     w.setHeading((w.getHeading() + WHEEL_TURN_STEP) % 360)
             if move_amt > 0:
-                if ly < 0:
+                if ry < 0:
                     self.makeMovement('backward', step=speed * move_amt)
                 else:
                     self.makeMovement('forward', step=speed * move_amt)
@@ -423,10 +445,10 @@ class Player:
         elif self.curve_mode == 'icamento':
             # left_y moves the cursor; also moves vehicle
             CURSOR_SENS = 0.035
-            if abs(ly) > DEAD:
+            if abs(ry) > DEAD:
                 # negative ly -> move up (decrease cursor)
-                self.icamento_cursor = max(0.0, min(1.0, self.icamento_cursor + (-ly) * CURSOR_SENS))
-                if ly < 0:
+                self.icamento_cursor = max(0.0, min(1.0, self.icamento_cursor + (-ry_treated) * CURSOR_SENS))
+                if ry < 0:
                     self.makeMovement('forward', step=speed * move_amt)
                 else:
                     self.makeMovement('backward', step=speed * move_amt)

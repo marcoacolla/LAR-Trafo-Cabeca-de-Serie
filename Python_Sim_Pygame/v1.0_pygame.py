@@ -172,7 +172,7 @@ while running:
                     1: 'straight',
                     2: 'diagonal',
                     4: 'pivotal',
-                    8: 'içamento'
+                    8: 'icamento'
                 }
                 new_mode = mode_map.get(sel)
                 if new_mode:
