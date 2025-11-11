@@ -331,6 +331,7 @@ while running:
     # coordenadas do mundo para a checagem e amostragem de pixels do mapa.
     screen_edges = player.get_hitbox_polygon(camera_or_offset=camera)
     world_polygon = player.get_rotated_hitbox()
+    '''
     # Desenha a hitbox rotacionada (debug) em tela
     for kind, data in player.get_hitbox_polygon(camera_or_offset=camera):
         if kind == "edge":
@@ -340,7 +341,7 @@ while running:
             pygame.draw.line(screen, (255, 0, 255), *data, 2)
         elif kind == "wheel":
             pygame.draw.polygon(screen, (0, 255, 0), data, 1)
-
+    '''
 
     
 

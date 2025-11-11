@@ -106,8 +106,8 @@ class Wheel:
         surface.blit(rotated_surface, rect)
 
         # Atualiza e desenha eixos na tela (com offset da câmera)
-        self.fixed_axes.draw(surface, camera_or_offset)
-        self.moving_axes.draw(surface, camera_or_offset)
+        #self.fixed_axes.draw(surface, camera_or_offset)
+        #self.moving_axes.draw(surface, camera_or_offset)
     
     def get_rotated_wheel_hitbox(self):
         """
