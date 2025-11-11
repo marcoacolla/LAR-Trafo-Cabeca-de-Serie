@@ -95,13 +95,20 @@ class Player:
     def getHeading(self):
         return self.heading  # Se quiser, pode adicionar rotação do player
     
-    def circle_to_square(lx, ly):
+    def normalize_joystick(self,lx, ly):
+        """
+        Normaliza o joystick circular para um quadrado [-1, 1].
+        Mantém proporção e evita distorções ou NaN.
+        """
+        # Evita problemas com joystick solto no centro
+        if abs(lx) < 1e-6 and abs(ly) < 1e-6:
+            return 0.0, 0.0
 
-        if lx == 0 and ly == 0:
-            return 0, 0
-        new_x = lx * math.sqrt(1 - (ly**2) / 2)
-        new_y = ly * math.sqrt(1 - (lx**2) / 2)
-        return new_x, new_y
+        new_x = lx * math.sqrt(1 - (ly**2)/2)
+        new_y = ly * math.sqrt(1 - (lx**2)/2)
+
+        # inverte o mapeamento (aproximado)
+        return new_x / math.sqrt(1 - (ly**2)/2), new_y / math.sqrt(1 - (lx**2)/2)
     
     def drawLights(self, camera_or_offset=(0,0)):
 
@@ -114,7 +121,7 @@ class Player:
             (-8, -13, (255, 0, 0), self.lights[0],0),   # vermelho esquerdo
             (8, -13, (255, 0, 0), self.lights[0],0),    # vermelho direito
 
-            (0, 0, (0, 0, 255), self.lights[3],0),      # azul no centro
+            (0, 0, (0, 0, 255), self.lights[4],0),      # azul no centro
 
             (-8,0, (255,200,0), self.lights[2],0),
             (8,0, (255,200,0), self.lights[2],0),
@@ -125,10 +132,10 @@ class Player:
 
 
 
-            (12, 45, (200, 200, 255), self.lights[4], 15),
-            (-12, 45, (200, 200, 255), self.lights[4], 15), # branco
-            (12, -45, (200, 200, 255), self.lights[4], 15),
-            (-12, -45, (200, 200, 255), self.lights[4], 15), 
+            (12, 45, (200, 200, 255), self.lights[3], 15),
+            (-12, 45, (200, 200, 255), self.lights[3], 15), # branco
+            (12, -45, (200, 200, 255), self.lights[3], 15),
+            (-12, -45, (200, 200, 255), self.lights[3], 15), 
         ]
 
         # Dimensões da barra (largura x altura)
@@ -341,8 +348,8 @@ class Player:
         lx, ly, rx, ry = axes
         # small deadzone to avoid drift
         DEAD = 0.12
-        lx_treated, ly_treated = lx, ly
-        rx_treated, ry_treated = rx,ry
+        lx_treated, ly_treated = self.normalize_joystick(lx, ly)
+        rx_treated, ry_treated = self.normalize_joystick(rx, ry)
         # Progress any in-progress transition first
         self.update_transition()
         if self.is_transitioning:
@@ -362,6 +369,8 @@ class Player:
 
         # Mode-specific handling
         if self.curve_mode == 'straight':
+            if abs(self.icr_bias) != .5:
+                self.setMode('curve', curveStart=GLV.CURVE_MAX_RADIUS)
             if move_amt > 0:
                 if ry < 0:
                     self.makeMovement('backward', step=speed * move_amt)
@@ -380,7 +389,7 @@ class Player:
 
         elif self.curve_mode in ("curve", "pivotal"):
             if self.curve_mode == "curve":
-                if abs(rx) < DEAD:
+                if abs(rx) < DEAD and self.icr_bias == 0.5:
                     self.setMode('straight')
                 # Map left_x to angle_offset
                 try:

@@ -201,6 +201,32 @@ while running:
     except Exception:
         pass
 
+    try:
+        if getattr(joystick_controller, 'available', False) and getattr(joystick_controller, 'hasChangedSpeed', False):
+            try:
+                sel = getattr(joystick_controller, 'currentSpeed', 0)
+                # Map selector values to internal mode names (follow turtle app logic)
+                speed_map = {
+                    0: 'rápida',
+                    1: 'média',
+                    3: 'lenta'
+                }
+                new_speed = speed_map.get(sel)
+                print(new_speed)
+                if new_speed:
+                    try:
+                        player.set_speed_mode(new_speed)
+                    except Exception:
+                        pass
+            finally:
+                # clear change flag so we don't reprocess the same selection
+                try:
+                    joystick_controller.hasChangedSpeed = False
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
     keys = pygame.key.get_pressed()
     if 'prev_keys' not in globals():
         prev_keys = keys
@@ -271,10 +297,10 @@ while running:
                 try:
                     lx, ly, rx, ry = joystick_controller.getJoystickValues()
                     player.move_with_joystick((lx, ly, rx, ry), speed=move_speed)
-                except Exception:
+                except Exception as e:
                     # if joystick access fails at runtime, fall back to keyboard
                     control_mode = 'keyboard'
-                    print('Joystick error: reverting to KEYBOARD control')
+                    print(f'Joystick error: reverting to KEYBOARD control({e})')
                     player.move(keys, speed=move_speed)
             else:
                 # joystick not available at runtime; fall back

@@ -30,6 +30,7 @@ class Joystick:
         self.CAN_CHANNEL_JOYSTICK = 0x200
         self.CAN_CHANNEL_SELETORA = 0x201
         self.CAN_CHANNEL_LIGHTS = 0x202
+        self.CAN_CHANNEL_SPEED = 0x203
 
         # state
         self.lights = [False, False, False, False, False]
@@ -38,7 +39,9 @@ class Joystick:
         self.eixo_direito_x = 0.0
         self.eixo_direito_y = 0.0
         self.currentMode = 0
+        self.currentSpeed = 0
         self.hasChangedMode = False
+        self.hasChangedSpeed = False
 
         self.bus = None
         self.available = False
@@ -108,6 +111,12 @@ class Joystick:
                         lightsState = struct.unpack('<B', data[0:1])[0]
                         # keep 5 lights as original
                         self.lights = [(lightsState & (1 << i)) != 0 for i in range(5)]
+                elif msg.arbitration_id == self.CAN_CHANNEL_SPEED:
+                    if len(data) >= 1:
+                        selectedSpeed = struct.unpack('<B', data[0:1])[0]
+                        if selectedSpeed != self.currentSpeed:
+                            self.currentSpeed = selectedSpeed
+                            self.hasChangedSpeed = True
             except Exception:
                 # ignore malformed messages
                 continue
