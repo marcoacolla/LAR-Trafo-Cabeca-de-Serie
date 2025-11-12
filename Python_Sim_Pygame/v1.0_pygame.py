@@ -7,7 +7,11 @@ from Camera.Camera import Camera
 from Player.Pathing.Curvature import Curvature
 
 pygame.init()
-screen = pygame.display.set_mode((800, 600))  # largura x altura
+# Main display and layout: reserve a right-side panel for customizable UI
+PANEL_WIDTH = 300  # largura padrão do painel lateral (personalizável)
+SCREEN_W = 800 + PANEL_WIDTH
+SCREEN_H = 600
+screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))  # largura x altura
 pygame.display.set_caption("Pygame Trafo Simulator")
 
 
@@ -86,7 +90,7 @@ if found:
 else:
     SPAWN_POINT = (200, 200)
 
-camera = Camera(800, 600)
+camera = Camera(SCREEN_W - PANEL_WIDTH, SCREEN_H)
 player = Player(SPAWN_POINT, screen, camera)
 from World.Trafo import Trafo
 # optional joystick controller (provided in Player/Joystick.py)
@@ -126,6 +130,142 @@ else:
             trafo.initial_pos = (SPAWN_POINT[0] + 120 if isinstance(SPAWN_POINT, tuple) else 300, SPAWN_POINT[1] if isinstance(SPAWN_POINT, tuple) else 200)
         except Exception:
             trafo.initial_pos = (300, 200)
+
+# -------------------------
+# SidePanel: minimal, customizable right-side UI (module-level)
+# -------------------------
+class SidePanel:
+    def __init__(self, x, y, w, h, font=None):
+        self.rect = pygame.Rect(x, y, w, h)
+        self.font = font or pygame.font.SysFont(None, 20)
+        # screens: list of dict {'title': str, 'options': [(label, callback_or_None), ...]}
+        self.screens = []
+        self.current = 0
+        self.selected = 0
+
+    def add_screen(self, title, options):
+        self.screens.append({'title': title, 'options': options})
+
+    def next_screen(self):
+        if not self.screens:
+            return
+        self.current = (self.current + 1) % len(self.screens)
+        self.selected = 0
+
+    def prev_screen(self):
+        if not self.screens:
+            return
+        self.current = (self.current - 1) % len(self.screens)
+        self.selected = 0
+
+    def select_next(self):
+        opts = self._opts()
+        if not opts:
+            return
+        self.selected = (self.selected + 1) % len(opts)
+
+    def select_prev(self):
+        opts = self._opts()
+        if not opts:
+            return
+        self.selected = (self.selected - 1) % len(opts)
+
+    def activate(self):
+        opts = self._opts()
+        if not opts:
+            return
+        label, cb = opts[self.selected]
+        try:
+            if callable(cb):
+                cb()
+            else:
+                print(f"Selected: {label}")
+        except Exception:
+            print(f"Error running callback for: {label}")
+
+    def _opts(self):
+        if not self.screens:
+            return []
+        return self.screens[self.current].get('options', [])
+
+    def draw(self, surf):
+        # background
+        pygame.draw.rect(surf, (30, 30, 30), self.rect)
+        # title
+        if not self.screens:
+            t = self.font.render('Panel (empty)', True, (255,255,255))
+            surf.blit(t, (self.rect.x + 8, self.rect.y + 8))
+            return
+        title = self.screens[self.current].get('title', '')
+        t = self.font.render(title, True, (255,255,255))
+        surf.blit(t, (self.rect.x + 8, self.rect.y + 8))
+
+        # options
+        opts = self._opts()
+        oy = self.rect.y + 8 + t.get_height() + 8
+        pad = 6
+        for idx, (label, _) in enumerate(opts):
+            y = oy + idx * (self.font.get_height() + pad)
+            if y + self.font.get_height() > self.rect.bottom - 8:
+                break
+            if idx == self.selected:
+                # highlight
+                highlight_rect = pygame.Rect(self.rect.x + 6, y - 2, self.rect.width - 12, self.font.get_height() + 4)
+                pygame.draw.rect(surf, (70,70,120), highlight_rect)
+            txt = self.font.render(label, True, (240,240,240))
+            surf.blit(txt, (self.rect.x + 12, y))
+
+    def update_mode_display(self, new_mode):
+        # optional hook used by existing code to notify UI of mode change
+        # if a screen has an option named 'Mode' we update its label
+        try:
+            for s in self.screens:
+                for i, (label, cb) in enumerate(s.get('options', [])):
+                    if label.startswith('Mode:'):
+                        s['options'][i] = (f'Mode: {new_mode}', cb)
+        except Exception:
+            pass
+
+# Instantiate a SidePanel on the right and populate with default screens
+panel_x = SCREEN_W - PANEL_WIDTH
+panel_y = 0
+panel_h = SCREEN_H
+panel_w = PANEL_WIDTH
+ui = SidePanel(panel_x, panel_y, panel_w, panel_h)
+
+def _toggle_hardcore():
+    global hardcore_mode
+    hardcore_mode = not hardcore_mode
+    print(f"Hardcore mode set to: {hardcore_mode}")
+
+def _reset_trafo():
+    try:
+        if hasattr(trafo, 'initial_pos'):
+            ix, iy = trafo.initial_pos
+            trafo.x = ix
+            trafo.y = iy
+            trafo.picked = False
+            trafo.carrier = None
+            print('Trafo reset to initial position')
+    except Exception:
+        pass
+
+ui.add_screen('Main', [
+    (f'Mode: {getattr(player, "curve_mode", "unknown")}', None),
+    ('Toggle Hardcore', _toggle_hardcore),
+    ('Reset Trafo', _reset_trafo),
+])
+
+ui.add_screen('Joystick', [
+    ('Control: ' + control_mode.upper(), None),
+    ('Set Speed Rápida', lambda: player.set_speed_mode('rápida')),
+    ('Set Speed Média', lambda: player.set_speed_mode('média')),
+    ('Set Speed Lenta', lambda: player.set_speed_mode('lenta')),
+])
+
+# expose ui variable in globals (some existing code checks globals().get('ui'))
+globals()['ui'] = ui
+
 
 
 clock = pygame.time.Clock()
@@ -265,6 +405,23 @@ while running:
     except Exception:
         pass
     prev_keys = keys
+
+    # Panel navigation keys (Tab to cycle screens, arrows to move, Enter to activate)
+    try:
+        if keys[pygame.K_TAB] and not prev_keys[pygame.K_TAB]:
+            ui.next_screen()
+        if keys[pygame.K_RIGHT] and not prev_keys[pygame.K_RIGHT]:
+            ui.next_screen()
+        if keys[pygame.K_LEFT] and not prev_keys[pygame.K_LEFT]:
+            ui.prev_screen()
+        if keys[pygame.K_UP] and not prev_keys[pygame.K_UP]:
+            ui.select_prev()
+        if keys[pygame.K_DOWN] and not prev_keys[pygame.K_DOWN]:
+            ui.select_next()
+        if keys[pygame.K_RETURN] and not prev_keys[pygame.K_RETURN]:
+            ui.activate()
+    except Exception:
+        pass
 
     # Zoom controls (j = zoom out, k = zoom in)
     try:
@@ -773,6 +930,10 @@ while running:
             # Do not continue; allow loop to run so player can move out of collision.
 
 
+    try:
+        ui.draw(screen)
+    except Exception:
+        pass
     pygame.display.flip()
     clock.tick(60)
     

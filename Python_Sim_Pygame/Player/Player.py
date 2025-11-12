@@ -975,7 +975,7 @@ class Player:
             # make yellow taller so that at its lowest position it covers the gray
             yellow_h = bar_h #max(20, min(bar_h, int(bar_h * 0.85)))
             min_yellow_top = bar_y + bar_h - yellow_h  # bottom-aligned position
-            max_yellow_top = bar_y - int(bar_h * 0.18)  # allow moving above the bar a bit
+            max_yellow_top = bar_y - int(bar_h * 0.60)  # allow moving above the bar a bit
             # interpolate top by icamento_cursor so that increasing cursor moves yellow up
             yellow_top = int(min_yellow_top + (max_yellow_top - min_yellow_top) * float(self.icamento_cursor))
             yellow_x = bar_x + (bar_w // 2) - (bar_w // 2)
