@@ -14,12 +14,19 @@ class UIManager:
         # history stack of previously visited screen indices (for back navigation)
         self.history = []
         self.player = player
+        # sensor mock values (displayed on Sensores screen)
+        self.sensor_altura = 12
+        self.inclin_x = 13
+        self.inclin_y = 14
         if panel_rect is None:
             sw, sh = screen.get_width(), screen.get_height()
             self.panel_rect = pygame.Rect(8, 100, 260, 70)
             print(f"[UIManager] Panel position: {self.panel_rect}")
         else:
             self.panel_rect = pygame.Rect(panel_rect)
+        # second-page sensor vars
+        self.anq_est = 7
+        self.velocidade = 0.5
 
     def add_screen(self, title, options):
         # By default screens are navigable by left/right. Pass title=='Menu_01' or
@@ -511,6 +518,187 @@ class UIManager:
             except Exception:
                 self._fs_opmode_option_rects = None
             return
+        elif title == 'FS_LIGHTS':
+            # FS_LIGHTS: Title 'Luz sinalizadora' and two side-by-side options Habilitar/Desabilitar
+            title_text = 'Luz sinalizadora'
+            try:
+                header_font = pygame.font.SysFont(None, int(self.font.get_height() * 1.2))
+            except Exception:
+                header_font = self.font
+            header_render = header_font.render(title_text, True, (0,70,220))
+            hx = self.panel_rect.x + (self.panel_rect.width - header_render.get_width()) // 2
+            hy = self.panel_rect.y + 6
+            # back arrow at top-left
+            try:
+                arrow_w = 20
+                arrow_h = max(header_render.get_height(), 18)
+                arrow_x = self.panel_rect.x + 8
+                arrow_y = hy + (header_render.get_height() - arrow_h) // 2
+                arrow_btn = pygame.Rect(arrow_x, arrow_y, arrow_w, arrow_h)
+                pygame.draw.rect(surf, (255,255,255), arrow_btn)
+                cx = arrow_btn.x + arrow_btn.width // 2
+                cy = arrow_btn.y + arrow_btn.height // 2
+                pts = [(cx+6, cy-6), (cx-6, cy), (cx+6, cy+6)]
+                pygame.draw.polygon(surf, (0,70,220), pts)
+                self._back_arrow_rect = arrow_btn.inflate(6, 6)
+            except Exception:
+                self._back_arrow_rect = None
+            surf.blit(header_render, (hx, hy))
+
+            # two side-by-side options centered
+            opts = self._opts()
+            opt_labels = [o[0] for o in opts[:2]]
+            gap = 16
+            texts = [self.font.render(l, True, (0,70,220)) for l in opt_labels]
+            txt_widths = [t.get_width() for t in texts]
+            btn_ws = [w + 24 for w in txt_widths]
+            total_w = sum(btn_ws) + gap * (len(btn_ws)-1)
+            start_x = self.panel_rect.x + (self.panel_rect.width - total_w)//2
+            oy = hy + header_render.get_height() + 12
+            x = start_x
+            rects = []
+            for i, label in enumerate(opt_labels):
+                sel = (self.selected == i)
+                w = btn_ws[i]
+                h = self.font.get_height() + 8
+                if sel:
+                    pygame.draw.rect(surf, (0,70,220), (x, oy, w, h))
+                    txt = self.font.render(label, True, (255,255,255))
+                else:
+                    pygame.draw.rect(surf, (255,255,255), (x, oy, w, h))
+                    txt = self.font.render(label, True, (0,70,220))
+                surf.blit(txt, (x + (w - txt.get_width())//2, oy + 4))
+                rects.append(pygame.Rect(x, oy, w, h))
+                x += w + gap
+            try:
+                self._fs_lights_option_rects = rects
+            except Exception:
+                self._fs_lights_option_rects = None
+            return
+        elif title == 'Sensores':
+            # Sensores screen: title and arrows both sides, two layers of info
+            title_text = 'Sensores'
+            try:
+                header_font = pygame.font.SysFont(None, int(self.font.get_height() * 1.2))
+            except Exception:
+                header_font = self.font
+            header_render = header_font.render(title_text, True, (0,70,220))
+            hx = self.panel_rect.x + (self.panel_rect.width - header_render.get_width()) // 2
+            hy = self.panel_rect.y + 6
+            # left back arrow
+            try:
+                arrow_w = 20
+                arrow_h = max(header_render.get_height(), 18)
+                arrow_x = self.panel_rect.x + 8
+                arrow_y = hy + (header_render.get_height() - arrow_h) // 2
+                arrow_btn = pygame.Rect(arrow_x, arrow_y, arrow_w, arrow_h)
+                pygame.draw.rect(surf, (255,255,255), arrow_btn)
+                cx = arrow_btn.x + arrow_btn.width // 2
+                cy = arrow_btn.y + arrow_btn.height // 2
+                pts = [(cx+6, cy-6), (cx-6, cy), (cx+6, cy+6)]
+                pygame.draw.polygon(surf, (0,70,220), pts)
+                self._back_arrow_rect = arrow_btn.inflate(6, 6)
+            except Exception:
+                self._back_arrow_rect = None
+            # right arrow (placeholder action)
+            try:
+                tr_w = 20
+                tr_h = max(header_render.get_height(), 18)
+                tr_x = self.panel_rect.right - tr_w - 8
+                tr_y = hy + (header_render.get_height() - tr_h) // 2
+                tr_btn = pygame.Rect(tr_x, tr_y, tr_w, tr_h)
+                pygame.draw.rect(surf, (255,255,255), tr_btn)
+                cx = tr_btn.x + tr_btn.width // 2
+                cy = tr_btn.y + tr_btn.height // 2
+                pts = [(cx-6, cy-6), (cx+6, cy), (cx-6, cy+6)]
+                pygame.draw.polygon(surf, (0,70,220), pts)
+                self._sensores_topright_rect = tr_btn.inflate(6, 6)
+            except Exception:
+                self._sensores_topright_rect = None
+            surf.blit(header_render, (hx, hy))
+
+            # hint arrow: right arrow key should go to second sensores page
+            hint = self.font.render('→', True, (0,70,220))
+            try:
+                surf.blit(hint, (self.panel_rect.right - 26, hy))
+            except Exception:
+                pass
+
+            # First layer: Altura
+            try:
+                altura_label = f'Altura: {int(self.sensor_altura)} cm'
+            except Exception:
+                altura_label = f'Altura: {self.sensor_altura} cm'
+            txt0 = self.font.render(altura_label, True, (0,70,220))
+            content_w = self.panel_rect.width - 24
+            h0 = self.font.get_height() + 8
+            x0 = self.panel_rect.x + 12
+            y0 = hy + header_render.get_height() + 8
+            pygame.draw.rect(surf, (255,255,255), (x0, y0, content_w, h0))
+            surf.blit(txt0, (x0 + 8, y0 + 4))
+
+            # Second layer: Inclin X / Y
+            inclin_label = f'Inclin: X: {int(self.inclin_x)}     Y: {int(self.inclin_y)}'
+            txt1 = self.font.render(inclin_label, True, (0,70,220))
+            content_w = self.panel_rect.width - 24
+            h1 = self.font.get_height() + 8
+            x1 = self.panel_rect.x + 12
+            y1 = y0 + h0 + 8
+            pygame.draw.rect(surf, (255,255,255), (x1, y1, content_w, h1))
+            surf.blit(txt1, (x1 + 8, y1 + 4))
+            return
+        elif title == 'Sensores_2':
+            # Second Sensores page: same header, show Anq. esterçamento and Velocidade
+            title_text = 'Sensores'
+            try:
+                header_font = pygame.font.SysFont(None, int(self.font.get_height() * 1.2))
+            except Exception:
+                header_font = self.font
+            header_render = header_font.render(title_text, True, (0,70,220))
+            hx = self.panel_rect.x + (self.panel_rect.width - header_render.get_width()) // 2
+            hy = self.panel_rect.y + 6
+            # back arrow at top-left
+            try:
+                arrow_w = 20
+                arrow_h = max(header_render.get_height(), 18)
+                arrow_x = self.panel_rect.x + 8
+                arrow_y = hy + (header_render.get_height() - arrow_h) // 2
+                arrow_btn = pygame.Rect(arrow_x, arrow_y, arrow_w, arrow_h)
+                pygame.draw.rect(surf, (255,255,255), arrow_btn)
+                cx = arrow_btn.x + arrow_btn.width // 2
+                cy = arrow_btn.y + arrow_btn.height // 2
+                pts = [(cx+6, cy-6), (cx-6, cy), (cx+6, cy+6)]
+                pygame.draw.polygon(surf, (0,70,220), pts)
+                self._back_arrow_rect = arrow_btn.inflate(6, 6)
+            except Exception:
+                self._back_arrow_rect = None
+            surf.blit(header_render, (hx, hy))
+
+            # Anq. esterçamento
+            try:
+                anq_label = f'Anq. esterçamento: {int(self.anq_est)}'
+            except Exception:
+                anq_label = f'Anq. esterçamento: {self.anq_est}'
+            txt0 = self.font.render(anq_label, True, (0,70,220))
+            content_w = self.panel_rect.width - 24
+            h0 = self.font.get_height() + 8
+            x0 = self.panel_rect.x + 12
+            y0 = hy + header_render.get_height() + 8
+            pygame.draw.rect(surf, (255,255,255), (x0, y0, content_w, h0))
+            surf.blit(txt0, (x0 + 8, y0 + 4))
+
+            # Velocidade
+            try:
+                vel_label = f'Velocidade : {float(self.velocidade):.2f} m/s'
+            except Exception:
+                vel_label = f'Velocidade : {self.velocidade} m/s'
+            txt1 = self.font.render(vel_label, True, (0,70,220))
+            h1 = self.font.get_height() + 8
+            x1 = self.panel_rect.x + 12
+            y1 = y0 + h0 + 8
+            pygame.draw.rect(surf, (255,255,255), (x1, y1, content_w, h1))
+            surf.blit(txt1, (x1 + 8, y1 + 4))
+            return
         elif title == 'FS_BASIC':
             # FS_BASIC: Title 'Funções Básicas' and two side-by-side centered options
             title_text = 'Funções Básicas'
@@ -727,6 +915,25 @@ class UIManager:
         elif key == pygame.K_LEFT:
             # left arrow should go back to the previous screen in history
             self.go_back()
+        elif key == pygame.K_RIGHT:
+            # If on Sensores, treat right arrow as 'next sensores page' (Sensores_2)
+            try:
+                title = self.screens[self.current].get('title', '')
+            except Exception:
+                title = ''
+            if title == 'Sensores':
+                try:
+                    for i, s in enumerate(self.screens):
+                        if s.get('title') == 'Sensores_2':
+                            try:
+                                self.history.append(self.current)
+                            except Exception:
+                                pass
+                            self.current = i
+                            self.selected = 0
+                            return
+                except Exception:
+                    pass
         elif key == pygame.K_UP:
             self.select_prev()
         elif key == pygame.K_DOWN:
@@ -739,9 +946,9 @@ class UIManager:
         try:
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 pos = event.pos
-                # prioritize back-arrow (Menu_01)
+                # prioritize back-arrow (Menu_01/other submenus)
                 title = self.screens[self.current].get('title', '') if self.screens else ''
-                if title in ('Menu_01', 'FS_MENU') and getattr(self, '_back_arrow_rect', None) and self._back_arrow_rect.collidepoint(pos):
+                if title in ('Menu_01', 'FS_MENU', 'Sensores') and getattr(self, '_back_arrow_rect', None) and self._back_arrow_rect.collidepoint(pos):
                     # clicked back arrow on a submenu: go back in history
                     try:
                         self.go_back()
@@ -815,6 +1022,32 @@ class UIManager:
                             except Exception:
                                 pass
                             return True
+                # FS_LIGHTS option clicks
+                if title == 'FS_LIGHTS' and getattr(self, '_fs_lights_option_rects', None):
+                    for idx, r in enumerate(self._fs_lights_option_rects):
+                        if r.collidepoint(pos):
+                            try:
+                                self.selected = idx
+                                self.activate()
+                            except Exception:
+                                pass
+                            return True
+                # Sensores top-right arrow click
+                if title == 'Sensores' and getattr(self, '_sensores_topright_rect', None) and self._sensores_topright_rect.collidepoint(pos):
+                    try:
+                        # navigate to Sensores_2 screen if present
+                        for i, s in enumerate(self.screens):
+                            if s.get('title') == 'Sensores_2':
+                                try:
+                                    self.history.append(self.current)
+                                except Exception:
+                                    pass
+                                self.current = i
+                                self.selected = 0
+                                break
+                    except Exception:
+                        pass
+                    return True
         except Exception:
             pass
         return False

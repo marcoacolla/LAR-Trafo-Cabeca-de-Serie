@@ -405,8 +405,31 @@ ui.add_screen('Main', [
 ui.add_screen('Menu_01', [
     ('Funções de Segurança', lambda: goto_screen_by_title('FS_MENU')),
     ('Sensores', lambda: goto_screen_by_title('Sensores')),
-    ('Luz Sinalz.', None),
+    ('Luz Sinalz.', lambda: goto_screen_by_title('FS_LIGHTS')),
 ],)
+# Sensores: informational screen (registered so goto_screen_by_title finds it)
+ui.add_screen('Sensores', [
+    # no selectable options; display-only handled by UIManager.draw
+])
+try:
+    for s in ui.screens:
+        if s.get('title') == 'Sensores':
+            s['navigable'] = False
+            break
+except Exception:
+    pass
+
+# Sensores page 2: additional sensor diagnostics
+ui.add_screen('Sensores_2', [
+    # display-only
+])
+try:
+    for s in ui.screens:
+        if s.get('title') == 'Sensores_2':
+            s['navigable'] = False
+            break
+except Exception:
+    pass
 # Make Menu_01 NOT navigable with left/right arrows; only reachable via activation
 try:
     for s in ui.screens:
@@ -451,6 +474,19 @@ ui.add_screen('FS_OPMODE', [
 try:
     for s in ui.screens:
         if s.get('title') == 'FS_OPMODE':
+            s['navigable'] = False
+            break
+except Exception:
+    pass
+
+# FS_LIGHTS: Luz sinalizadora submenu (two side-by-side options)
+ui.add_screen('FS_LIGHTS', [
+    ('Habilitar', None),
+    ('Desabilitar', None),
+])
+try:
+    for s in ui.screens:
+        if s.get('title') == 'FS_LIGHTS':
             s['navigable'] = False
             break
 except Exception:
@@ -659,6 +695,8 @@ while running:
             ui.process_key_event(pygame.K_DOWN)
         if keys[pygame.K_LEFT] and not prev_keys[pygame.K_LEFT]:
             ui.process_key_event(pygame.K_LEFT)
+        if keys[pygame.K_RIGHT] and not prev_keys[pygame.K_RIGHT]:
+            ui.process_key_event(pygame.K_RIGHT)
         if keys[pygame.K_RETURN] and not prev_keys[pygame.K_RETURN]:
             ui.process_key_event(pygame.K_RETURN)
     except Exception:
