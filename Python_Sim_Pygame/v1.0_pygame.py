@@ -379,6 +379,12 @@ def goto_screen_by_title(title):
     try:
         for i, s in enumerate(ui.screens):
             if s.get('title') == title:
+                # push current screen onto ui history so back returns here
+                try:
+                    if getattr(ui, 'history', None) is not None:
+                        ui.history.append(ui.current)
+                except Exception:
+                    pass
                 ui.current = i
                 ui.selected = 0
                 return
@@ -397,14 +403,93 @@ ui.add_screen('Main', [
 
 # Menu_01: new screen shown when selecting Menu from Main
 ui.add_screen('Menu_01', [
-    ('Opcao 1', None),
-    ('Opcao 2', None),
-    ('Voltar', lambda: goto_screen_by_title('Main')),
+    ('Funções de Segurança', lambda: goto_screen_by_title('FS_MENU')),
+    ('Sensores', lambda: goto_screen_by_title('Sensores')),
+    ('Luz Sinalz.', None),
 ],)
 # Make Menu_01 NOT navigable with left/right arrows; only reachable via activation
 try:
     for s in ui.screens:
         if s.get('title') == 'Menu_01':
+            s['navigable'] = False
+            break
+except Exception:
+    pass
+
+# FS_MENU: Funções de Segurança submenu
+ui.add_screen('FS_MENU', [
+    ('Funções Basicas', lambda: goto_screen_by_title('FS_BASIC')),
+    ('Funções Avançadas', lambda: goto_screen_by_title('FS_ADVANCED')),
+])
+# Make FS_MENU non-navigable (reachable only from Menu_01)
+try:
+    for s in ui.screens:
+        if s.get('title') == 'FS_MENU':
+            s['navigable'] = False
+            break
+except Exception:
+    pass
+
+# FS_ADVANCED: Funções Avançadas submenu (stacked options)
+ui.add_screen('FS_ADVANCED', [
+    ('Selecionar colunas', None),
+    ('Modo operação', lambda: goto_screen_by_title('FS_OPMODE')),
+])
+try:
+    for s in ui.screens:
+        if s.get('title') == 'FS_ADVANCED':
+            s['navigable'] = False
+            break
+except Exception:
+    pass
+
+# FS_OPMODE: Modo operação submenu (stacked options: Malha aberta / Malha fechada)
+ui.add_screen('FS_OPMODE', [
+    ('Malha aberta', None),
+    ('Malha fechada', None),
+])
+try:
+    for s in ui.screens:
+        if s.get('title') == 'FS_OPMODE':
+            s['navigable'] = False
+            break
+except Exception:
+    pass
+
+# FS_BASIC: Funções Basicas submenu (two side-by-side options)
+ui.add_screen('FS_BASIC', [
+    ('Autonivelamento', lambda: goto_screen_by_title('FS_AUTONIVEL')),
+    ('Freio', lambda: goto_screen_by_title('FS_FREIO')),
+])
+try:
+    for s in ui.screens:
+        if s.get('title') == 'FS_BASIC':
+            s['navigable'] = False
+            break
+except Exception:
+    pass
+
+# FS_AUTONIVEL: Autonivelamento screen (Habilitar / Desabilitar side-by-side)
+ui.add_screen('FS_AUTONIVEL', [
+    ('Habilitar', None),
+    ('Desabilitar', None),
+])
+try:
+    for s in ui.screens:
+        if s.get('title') == 'FS_AUTONIVEL':
+            s['navigable'] = False
+            break
+except Exception:
+    pass
+
+# FS_FREIO: Freio screen (Habilitar / Desabilitar side-by-side)
+ui.add_screen('FS_FREIO', [
+    ('Habilitar', None),
+    ('Desabilitar', None),
+])
+try:
+    for s in ui.screens:
+        if s.get('title') == 'FS_FREIO':
             s['navigable'] = False
             break
 except Exception:
@@ -436,6 +521,17 @@ while running:
             pygame.joystick.init()
         except Exception:
             pass
+    # process mouse button down events separately and forward to UI (safe, limited)
+    try:
+        for ev in pygame.event.get([pygame.MOUSEBUTTONDOWN]):
+            try:
+                if globals().get('ui') is not None and hasattr(globals().get('ui'), 'process_mouse_event'):
+                    globals().get('ui').process_mouse_event(ev)
+            except Exception:
+                pass
+    except Exception:
+        # ignore event polling issues to preserve existing behavior
+        pass
     # poll CAN joystick (if present) to update its internal state
     try:
         if getattr(joystick_controller, 'available', False) and hasattr(joystick_controller, 'poll'):
@@ -561,10 +657,8 @@ while running:
             ui.process_key_event(pygame.K_UP)
         if keys[pygame.K_DOWN] and not prev_keys[pygame.K_DOWN]:
             ui.process_key_event(pygame.K_DOWN)
-        if keys[pygame.K_UP] and not prev_keys[pygame.K_UP]:
-            ui.process_key_event(pygame.K_UP)
-        if keys[pygame.K_DOWN] and not prev_keys[pygame.K_DOWN]:
-            ui.process_key_event(pygame.K_DOWN)
+        if keys[pygame.K_LEFT] and not prev_keys[pygame.K_LEFT]:
+            ui.process_key_event(pygame.K_LEFT)
         if keys[pygame.K_RETURN] and not prev_keys[pygame.K_RETURN]:
             ui.process_key_event(pygame.K_RETURN)
     except Exception:
