@@ -20,27 +20,75 @@ class UIManager:
             self.panel_rect = pygame.Rect(panel_rect)
 
     def add_screen(self, title, options):
-        self.screens.append({'title': title, 'options': list(options)})
+        # By default screens are navigable by left/right. Pass title=='Menu_01' or
+        # options with a special marker to make non-navigable screens.
+        self.screens.append({'title': title, 'options': list(options), 'navigable': True})
 
     def next_screen(self):
         if not self.screens:
             return
-        self.current = (self.current + 1) % len(self.screens)
-        self.selected = 0
+        # advance to next navigable screen
+        n = len(self.screens)
+        if n == 0:
+            return
+        i = self.current
+        for _ in range(n):
+            i = (i + 1) % n
+            if self.screens[i].get('navigable', True):
+                self.current = i
+                self.selected = 0
+                return
 
     def prev_screen(self):
         if not self.screens:
             return
-        self.current = (self.current - 1) % len(self.screens)
-        self.selected = 0
+        n = len(self.screens)
+        if n == 0:
+            return
+        i = self.current
+        for _ in range(n):
+            i = (i - 1) % n
+            if self.screens[i].get('navigable', True):
+                self.current = i
+                self.selected = 0
+                return
 
     def select_next(self):
+        # Custom handling for Main screen interactive items (Menu + ERRO if exists)
+        try:
+            title = self.screens[self.current].get('title', '')
+        except Exception:
+            title = ''
+        if title == 'Main':
+            error_present = False
+            try:
+                if self.player and hasattr(self.player, 'lights') and len(self.player.lights) > 0 and self.player.lights[0]:
+                    error_present = True
+            except Exception:
+                error_present = False
+            max_index = 1 if error_present else 0  # 0=Menu, 1=ERRO
+            self.selected = (self.selected + 1) % (max_index + 1)
+            return
         opts = self._opts()
         if not opts:
             return
         self.selected = min(self.selected + 1, len(opts) - 1)
 
     def select_prev(self):
+        try:
+            title = self.screens[self.current].get('title', '')
+        except Exception:
+            title = ''
+        if title == 'Main':
+            error_present = False
+            try:
+                if self.player and hasattr(self.player, 'lights') and len(self.player.lights) > 0 and self.player.lights[0]:
+                    error_present = True
+            except Exception:
+                error_present = False
+            max_index = 1 if error_present else 0
+            self.selected = (self.selected - 1) % (max_index + 1)
+            return
         opts = self._opts()
         if not opts:
             return
@@ -50,6 +98,18 @@ class UIManager:
         opts = self._opts()
         if not opts:
             return
+        # Special-case: if we're on Main and selected==0 (Menu), go to Menu_01 screen
+        try:
+            current_title = self.screens[self.current].get('title', '')
+        except Exception:
+            current_title = ''
+        if current_title == 'Main' and self.selected == 0:
+            # try to find Menu_01 screen and switch to it
+            for i, s in enumerate(self.screens):
+                if s.get('title') == 'Menu_01':
+                    self.current = i
+                    self.selected = 0
+                    return
         label, cb = opts[self.selected]
         try:
             if callable(cb):
@@ -127,48 +187,62 @@ class UIManager:
             mode_render = self.font.render(mode_str, True, (0, 70, 220))
             mode_x = ex_x + 18
             surf.blit(mode_render, (mode_x, top_y))
-            # Bottom row: right side "Menu ->" + arrow
-            menu_str = 'Menu'
-            arrow_str = '→'
-            menu_render = self.font.render(menu_str, True, (0,70,220))
-            # Try to render arrow, fallback to '>' if font doesn't support
-            try:
-                arrow_render = self.font.render(arrow_str, True, (0,70,220))
-                if arrow_render.get_width() < 5:
-                    raise Exception('Arrow too small')
-            except Exception:
-                arrow_render = self.font.render('>', True, (0,70,220))
-            menu_x = self.panel_rect.right - menu_render.get_width() - arrow_render.get_width() - pad
-            menu_y = self.panel_rect.bottom - menu_render.get_height() - pad
-            surf.blit(menu_render, (menu_x, menu_y))
-            surf.blit(arrow_render, (menu_x + menu_render.get_width() + 2, menu_y))
-            # Bottom left: warning(s) if present
-            # Compose warnings: ERRO (red light), BATERIA (low battery)
+
+            # Build warnings BEFORE drawing selectable ERRO so we can know if exists
             warnings_to_show = []
             if self.player:
-                # ERRO: red light
-                if hasattr(self.player, 'lights') and len(self.player.lights) > 0 and self.player.lights[0]:
-                    warnings_to_show.append(('ERRO', 'red'))
-                # BATERIA: battery low (<20%)
+                try:
+                    if hasattr(self.player, 'lights') and len(self.player.lights) > 0 and self.player.lights[0]:
+                        warnings_to_show.append(('ERRO', 'red'))
+                except Exception:
+                    pass
                 if hasattr(self.player, 'battery_level'):
                     try:
                         if float(self.player.battery_level) < 0.2:
                             warnings_to_show.append(('BATERIA', 'battery'))
                     except Exception:
                         pass
-            # If warning argument is set, override and show only that
             if warning:
                 warnings_to_show = [(warning, 'custom')]
+            # Bottom row: right side selectable 'Menu' and arrow
+            menu_str = 'Menu'
+            menu_selected = (self.selected == 0)
+            menu_render = self.font.render(menu_str, True, (255,255,255) if menu_selected else (0,70,220))
+            menu_bg_rect = menu_render.get_rect()
+            menu_bg_rect.x = self.panel_rect.right - menu_render.get_width() - 24 - pad
+            menu_bg_rect.y = self.panel_rect.bottom - menu_render.get_height() - pad
+            menu_bg_rect.width += 8
+            menu_bg_rect.height += 2
+            if menu_selected:
+                pygame.draw.rect(surf, (0,70,220), menu_bg_rect)
+            surf.blit(menu_render, (menu_bg_rect.x + 4, menu_bg_rect.y))
+            # Arrow
+            arrow_str = '\u2192'  # Unicode right arrow
+            try:
+                arrow_render = self.font.render(arrow_str, True, (255,255,255) if menu_selected else (0,70,220))
+                if arrow_render.get_width() < 10:
+                    raise Exception('Arrow too small')
+                use_arrow_img = True
+            except Exception:
+                use_arrow_img = False
+            ax = menu_bg_rect.x + menu_render.get_width() + 14
+            ay = menu_bg_rect.y + menu_render.get_height()//2
+            if use_arrow_img:
+                surf.blit(arrow_render, (menu_bg_rect.x + menu_render.get_width() + 8, menu_bg_rect.y))
+            else:
+                arrow_color = (255,255,255) if menu_selected else (0,70,220)
+                pygame.draw.polygon(surf, arrow_color, [
+                    (ax, ay-6), (ax+10, ay), (ax, ay+6)
+                ])
+
+            # Draw warnings (ERRO selectable if present)
             aviso_pad = pad
             for idx, (warn_text, warn_type) in enumerate(warnings_to_show):
                 aviso_label = 'Aviso: '
                 aviso_label_render = self.font.render(aviso_label, True, (0,70,220))
-                # ERRO: blue text, no background; BATERIA: white text, blue background
-                if warn_type == 'red':
-                    warn_render = self.font.render(warn_text, True, (0,70,220))
-                    surf.blit(aviso_label_render, (self.panel_rect.x + aviso_pad, self.panel_rect.bottom - aviso_label_render.get_height()*(len(warnings_to_show)-idx) - pad))
-                    surf.blit(warn_render, (self.panel_rect.x + aviso_pad + aviso_label_render.get_width(), self.panel_rect.bottom - warn_render.get_height()*(len(warnings_to_show)-idx) - pad))
-                elif warn_type == 'battery':
+                is_erro = (warn_text == 'ERRO')
+                erro_selected = (self.selected == 1 and is_erro)
+                if warn_type == 'battery':
                     warn_render = self.font.render(warn_text, True, (255,255,255))
                     bg_rect = warn_render.get_rect()
                     bg_rect.x = self.panel_rect.x + aviso_pad + aviso_label_render.get_width()
@@ -179,10 +253,52 @@ class UIManager:
                     surf.blit(aviso_label_render, (self.panel_rect.x + aviso_pad, bg_rect.y))
                     surf.blit(warn_render, (bg_rect.x + 4, bg_rect.y))
                 else:
-                    # custom: blue text (for ERRO)
-                    warn_render = self.font.render(warn_text, True, (0,70,220))
-                    surf.blit(aviso_label_render, (self.panel_rect.x + aviso_pad, self.panel_rect.bottom - aviso_label_render.get_height()*(len(warnings_to_show)-idx) - pad))
-                    surf.blit(warn_render, (self.panel_rect.x + aviso_pad + aviso_label_render.get_width(), self.panel_rect.bottom - warn_render.get_height()*(len(warnings_to_show)-idx) - pad))
+                    # ERRO or custom
+                    warn_color = (255,255,255) if erro_selected else (0,70,220)
+                    warn_render = self.font.render(warn_text, True, warn_color)
+                    y_pos_label = self.panel_rect.bottom - aviso_label_render.get_height()*(len(warnings_to_show)-idx) - pad
+                    x_base = self.panel_rect.x + aviso_pad
+                    if erro_selected:
+                        # background for ERRO selection
+                        bg_rect = warn_render.get_rect()
+                        bg_rect.x = x_base + aviso_label_render.get_width()
+                        bg_rect.y = y_pos_label
+                        bg_rect.width += 8
+                        bg_rect.height += 2
+                        pygame.draw.rect(surf, (0,70,220), bg_rect)
+                        surf.blit(aviso_label_render, (x_base, y_pos_label))
+                        surf.blit(warn_render, (bg_rect.x + 4, bg_rect.y))
+                    else:
+                        surf.blit(aviso_label_render, (x_base, y_pos_label))
+                        surf.blit(warn_render, (x_base + aviso_label_render.get_width(), y_pos_label))
+        elif title == 'Menu_01':
+            # Render a centered title 'MENU' at the top of the panel
+            title_text = 'MENU'
+            # slightly larger font for the menu header
+            try:
+                header_font = pygame.font.SysFont(None, int(self.font.get_height() * 1.2))
+            except Exception:
+                header_font = self.font
+            header_render = header_font.render(title_text, True, (0,70,220))
+            hx = self.panel_rect.x + (self.panel_rect.width - header_render.get_width()) // 2
+            hy = self.panel_rect.y + 8
+            surf.blit(header_render, (hx, hy))
+            # draw options (if any) below
+            oy = hy + header_render.get_height() + 8
+            x = self.panel_rect.x + 8
+            pad_x = 12
+            for idx, (label, _) in enumerate(self._opts()):
+                txt_color = (255, 255, 255) if idx == self.selected else (0, 70, 220)
+                bg_color = (0, 70, 220) if idx == self.selected else None
+                txt = self.font.render(label, True, txt_color)
+                item_w = txt.get_width() + 12
+                if bg_color:
+                    pygame.draw.rect(surf, bg_color, (x - 6, oy - 2, item_w + 6, self.font.get_height() + 4))
+                    surf.blit(txt, (x + 6, oy))
+                else:
+                    surf.blit(txt, (x + 6, oy))
+                x += item_w + pad_x
+            return
         else:
             # Default: draw title and options horizontally
             t = self.font.render(title, True, (0, 0, 0))
@@ -204,10 +320,9 @@ class UIManager:
 
     # compatibility wrappers
     def process_key_event(self, key):
-        if key in (pygame.K_TAB, pygame.K_RIGHT):
+        # Only Tab cycles screens; arrow keys do not change screens here
+        if key == pygame.K_TAB:
             self.next_screen()
-        elif key == pygame.K_LEFT:
-            self.prev_screen()
         elif key == pygame.K_UP:
             self.select_prev()
         elif key == pygame.K_DOWN:

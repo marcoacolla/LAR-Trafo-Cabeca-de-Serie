@@ -36,7 +36,7 @@ class Player:
         self.heading = 0
         self.camera = camera
         self.modes = ["straight", "curve", "pivotal", "diagonal"]
-        self.lights = [True, False, False, False, True]  # Estado das luzes (4 luzes)
+        self.lights = [False, False, False, False, False]  # Estado das luzes (4 luzes)
         self.sirene = False  # Estado da sirene (ligada/desligada)
         
 

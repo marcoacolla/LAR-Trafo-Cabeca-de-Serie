@@ -393,20 +393,22 @@ ui.add_screen('Main', [
     ('Reset Trafo', _reset_trafo),
 ])
 
-ui.add_screen('Joystick', [
-    ('Control: ' + control_mode.upper(), None),
-    ('Set Speed Rápida', lambda: player.set_speed_mode('rápida')),
-    ('Set Speed Média', lambda: player.set_speed_mode('média')),
-    ('Set Speed Lenta', lambda: player.set_speed_mode('lenta')),
-])
+# (Removed placeholder screens 'Joystick' and 'Sensores' — keep UI focused on Main/Menu_01)
 
-# Sensores screen with placeholder values (editable later)
-ui.add_screen('Sensores', [
-    ('Sensor A: --', None),
-    ('Sensor B: --', None),
-    ('Sensor C: --', None),
+# Menu_01: new screen shown when selecting Menu from Main
+ui.add_screen('Menu_01', [
+    ('Opcao 1', None),
+    ('Opcao 2', None),
     ('Voltar', lambda: goto_screen_by_title('Main')),
-])
+],)
+# Make Menu_01 NOT navigable with left/right arrows; only reachable via activation
+try:
+    for s in ui.screens:
+        if s.get('title') == 'Menu_01':
+            s['navigable'] = False
+            break
+except Exception:
+    pass
 
 # expose ui variable in globals (some existing code checks globals().get('ui'))
 globals()['ui'] = ui
@@ -555,10 +557,10 @@ while running:
         # use edge-detection: key pressed now and not pressed previously
         if keys[pygame.K_TAB] and not prev_keys[pygame.K_TAB]:
             ui.process_key_event(pygame.K_TAB)
-        if keys[pygame.K_RIGHT] and not prev_keys[pygame.K_RIGHT]:
-            ui.process_key_event(pygame.K_RIGHT)
-        if keys[pygame.K_LEFT] and not prev_keys[pygame.K_LEFT]:
-            ui.process_key_event(pygame.K_LEFT)
+        if keys[pygame.K_UP] and not prev_keys[pygame.K_UP]:
+            ui.process_key_event(pygame.K_UP)
+        if keys[pygame.K_DOWN] and not prev_keys[pygame.K_DOWN]:
+            ui.process_key_event(pygame.K_DOWN)
         if keys[pygame.K_UP] and not prev_keys[pygame.K_UP]:
             ui.process_key_event(pygame.K_UP)
         if keys[pygame.K_DOWN] and not prev_keys[pygame.K_DOWN]:
@@ -574,10 +576,6 @@ while running:
     try:
         if keys[pygame.K_TAB] and not prev_keys[pygame.K_TAB]:
             ui.next_screen()
-        if keys[pygame.K_RIGHT] and not prev_keys[pygame.K_RIGHT]:
-            ui.next_screen()
-        if keys[pygame.K_LEFT] and not prev_keys[pygame.K_LEFT]:
-            ui.prev_screen()
         if keys[pygame.K_UP] and not prev_keys[pygame.K_UP]:
             ui.select_prev()
         if keys[pygame.K_DOWN] and not prev_keys[pygame.K_DOWN]:
