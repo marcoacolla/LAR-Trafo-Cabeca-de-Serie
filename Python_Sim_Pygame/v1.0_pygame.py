@@ -5,6 +5,12 @@ import os
 from Player.Player import Player
 from Camera.Camera import Camera
 from Player.Pathing.Curvature import Curvature
+# UI manager (modular screens placed in `ui/` package)
+try:
+    from ui.manager import UIManager
+except Exception:
+    # best-effort import; if running from different cwd this may fail
+    UIManager = None
 
 pygame.init()
 # Main display and layout: reserve a right-side panel for customizable UI
@@ -90,7 +96,7 @@ if found:
 else:
     SPAWN_POINT = (200, 200)
 
-camera = Camera(SCREEN_W - PANEL_WIDTH, SCREEN_H)
+camera = Camera(SCREEN_W, SCREEN_H)
 player = Player(SPAWN_POINT, screen, camera)
 from World.Trafo import Trafo
 # optional joystick controller (provided in Player/Joystick.py)
@@ -135,13 +141,15 @@ else:
 # SidePanel: minimal, customizable right-side UI (module-level)
 # -------------------------
 class SidePanel:
-    def __init__(self, x, y, w, h, font=None):
+    def __init__(self, x, y, w, h, font=None, layout='vertical'):
         self.rect = pygame.Rect(x, y, w, h)
         self.font = font or pygame.font.SysFont(None, 20)
         # screens: list of dict {'title': str, 'options': [(label, callback_or_None), ...]}
         self.screens = []
         self.current = 0
         self.selected = 0
+        # layout: 'vertical' (default) or 'horizontal' for side-by-side options
+        self.layout = layout
 
     def add_screen(self, title, options):
         self.screens.append({'title': title, 'options': options})
@@ -162,13 +170,48 @@ class SidePanel:
         opts = self._opts()
         if not opts:
             return
-        self.selected = (self.selected + 1) % len(opts)
+        self.selected += 1
+        if self.selected >= len(opts):
+            self.selected = 0
 
     def select_prev(self):
         opts = self._opts()
         if not opts:
             return
-        self.selected = (self.selected - 1) % len(opts)
+        self.selected -= 1
+        if self.selected < 0:
+            self.selected = len(opts) - 1
+
+    def handle_action(self, action):
+        """Generic action handler for joystick or external callers.
+        Actions: 'next_screen','prev_screen','select_next','select_prev','activate'"""
+        try:
+            if action == 'next_screen':
+                self.next_screen()
+            elif action == 'prev_screen':
+                self.prev_screen()
+            elif action == 'select_next':
+                self.select_next()
+            elif action == 'select_prev':
+                self.select_prev()
+            elif action == 'activate':
+                self.activate()
+        except Exception:
+            pass
+
+    def process_key_event(self, key):
+        """Process a pygame key constant as an edge event.
+        Keeps mapping centralized so joystick code can call `ui.handle_action` later."""
+        if key in (pygame.K_TAB, pygame.K_RIGHT):
+            self.next_screen()
+        elif key == pygame.K_LEFT:
+            self.prev_screen()
+        elif key == pygame.K_UP:
+            self.select_prev()
+        elif key == pygame.K_DOWN:
+            self.select_next()
+        elif key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+            self.activate()
 
     def activate(self):
         opts = self._opts()
@@ -189,31 +232,106 @@ class SidePanel:
         return self.screens[self.current].get('options', [])
 
     def draw(self, surf):
-        # background
-        pygame.draw.rect(surf, (30, 30, 30), self.rect)
-        # title
+        # compute a compact background box sized to fit the title and options
         if not self.screens:
             t = self.font.render('Panel (empty)', True, (255,255,255))
-            surf.blit(t, (self.rect.x + 8, self.rect.y + 8))
+            empty_w = t.get_width() + 24
+            empty_h = t.get_height() + 16
+            content_rect = pygame.Rect(self.rect.right - empty_w - 8, self.rect.y + 8, empty_w, empty_h)
+            pygame.draw.rect(surf, (30, 30, 30), content_rect)
+            surf.blit(t, (content_rect.x + 8, content_rect.y + 8))
             return
+
         title = self.screens[self.current].get('title', '')
         t = self.font.render(title, True, (255,255,255))
-        surf.blit(t, (self.rect.x + 8, self.rect.y + 8))
 
-        # options
         opts = self._opts()
-        oy = self.rect.y + 8 + t.get_height() + 8
         pad = 6
-        for idx, (label, _) in enumerate(opts):
-            y = oy + idx * (self.font.get_height() + pad)
-            if y + self.font.get_height() > self.rect.bottom - 8:
-                break
-            if idx == self.selected:
-                # highlight
-                highlight_rect = pygame.Rect(self.rect.x + 6, y - 2, self.rect.width - 12, self.font.get_height() + 4)
-                pygame.draw.rect(surf, (70,70,120), highlight_rect)
-            txt = self.font.render(label, True, (240,240,240))
-            surf.blit(txt, (self.rect.x + 12, y))
+        # available width inside the panel to place content
+        max_width = max(16, self.rect.width - 16)
+
+        # compute content size depending on layout
+        if self.layout == 'vertical':
+            max_opt_w = 0
+            for label, _ in opts:
+                s = self.font.render(label, True, (240,240,240))
+                max_opt_w = max(max_opt_w, s.get_width())
+            content_w = min(max_width, max(t.get_width(), max_opt_w) + 24)
+            content_h = t.get_height() + 8 + len(opts) * (self.font.get_height() + pad) + 16
+        else:
+            # simulate horizontal wrapping to compute width and height
+            start_x = 0
+            x = 0
+            rows = 1
+            row_height = self.font.get_height()
+            pad_x = 12
+            pad_y = 8
+            max_row_w = 0
+            for label, _ in opts:
+                s = self.font.render(label, True, (240,240,240))
+                item_w = s.get_width() + 12
+                if x + item_w > max_width:
+                    max_row_w = max(max_row_w, x)
+                    x = 0
+                    rows += 1
+                x += item_w + pad_x
+            max_row_w = max(max_row_w, x)
+            content_w = min(max_width, max(t.get_width(), max_row_w) + 24)
+            content_h = t.get_height() + 8 + rows * row_height + (rows - 1) * pad_y + 16
+
+        # place content box at the bottom left of the screen
+        surf_w, surf_h = surf.get_width(), surf.get_height()
+        # sobe o painel mais para cima (ex: 48 pixels do fundo ao invés de 16)
+        content_rect = pygame.Rect(8, surf_h - content_h - 48, content_w, content_h)
+        # fundo branco
+        pygame.draw.rect(surf, (255, 255, 255), content_rect)
+        # borda vermelha grossa
+        pygame.draw.rect(surf, (220, 0, 0), content_rect, 3)
+        # título azul
+        surf.blit(self.font.render(title, True, (0, 70, 220)), (content_rect.x + 8, content_rect.y + 8))
+
+        oy = content_rect.y + 8 + t.get_height() + 8
+        # vertical layout (original behavior)
+        if self.layout == 'vertical':
+            for idx, (label, _) in enumerate(opts):
+                y = oy + idx * (self.font.get_height() + pad)
+                if y + self.font.get_height() > content_rect.bottom - 8:
+                    break
+                if idx == self.selected:
+                    highlight_rect = pygame.Rect(content_rect.x + 6, y - 2, content_rect.width - 12, self.font.get_height() + 4)
+                    pygame.draw.rect(surf, (0,70,220), highlight_rect)
+                    txt = self.font.render(label, True, (255,255,255))
+                else:
+                    txt = self.font.render(label, True, (0, 70, 220))
+                surf.blit(txt, (content_rect.x + 12, y))
+        else:
+            # horizontal layout: place options side-by-side, wrap to next row if needed
+            start_x = 8
+            x = start_x
+            y = oy
+            row_height = self.font.get_height()
+            pad_x = 12
+            pad_y = 8
+            for idx, (label, _) in enumerate(opts):
+                # calcula largura do item com cor correta
+                if idx == self.selected:
+                    item_w = self.font.render(label, True, (255,255,255)).get_width() + 12
+                else:
+                    item_w = self.font.render(label, True, (0,70,220)).get_width() + 12
+
+                # wrap to next row if doesn't fit
+                if x + item_w > content_rect.width - 16:
+                    x = start_x
+                    y += row_height + pad_y
+                # desenha highlight e texto
+                if idx == self.selected:
+                    highlight_rect = pygame.Rect(content_rect.x + x - 6, y - 2, item_w + 6, row_height + 4)
+                    pygame.draw.rect(surf, (0,70,220), highlight_rect)
+                    txt = self.font.render(label, True, (255,255,255))
+                else:
+                    txt = self.font.render(label, True, (0, 70, 220))
+                surf.blit(txt, (content_rect.x + x + 6, y))
+                x += item_w + pad_x
 
     def update_mode_display(self, new_mode):
         # optional hook used by existing code to notify UI of mode change
@@ -227,11 +345,17 @@ class SidePanel:
             pass
 
 # Instantiate a SidePanel on the right and populate with default screens
-panel_x = SCREEN_W - PANEL_WIDTH
-panel_y = 0
-panel_h = SCREEN_H
-panel_w = PANEL_WIDTH
-ui = SidePanel(panel_x, panel_y, panel_w, panel_h)
+# Instantiate a compact bottom-left UI manager if available, else fall back to SidePanel
+if UIManager is not None:
+    panel_rect = (8, SCREEN_H - 120, 320, 100)
+    ui = UIManager(screen, panel_rect=panel_rect, player=player)
+else:
+    # fallback: older SidePanel on the right
+    panel_x = SCREEN_W - PANEL_WIDTH
+    panel_y = 0
+    panel_h = SCREEN_H
+    panel_w = PANEL_WIDTH
+    ui = SidePanel(panel_x, panel_y, panel_w, panel_h, layout='horizontal')
 
 def _toggle_hardcore():
     global hardcore_mode
@@ -250,8 +374,21 @@ def _reset_trafo():
     except Exception:
         pass
 
+def goto_screen_by_title(title):
+    """Set the panel to the screen with the given title (if exists)."""
+    try:
+        for i, s in enumerate(ui.screens):
+            if s.get('title') == title:
+                ui.current = i
+                ui.selected = 0
+                return
+    except Exception:
+        pass
+    print(f"Panel screen '{title}' not found")
+
 ui.add_screen('Main', [
     (f'Mode: {getattr(player, "curve_mode", "unknown")}', None),
+    ('Sensores', lambda: goto_screen_by_title('Sensores')),
     ('Toggle Hardcore', _toggle_hardcore),
     ('Reset Trafo', _reset_trafo),
 ])
@@ -261,6 +398,14 @@ ui.add_screen('Joystick', [
     ('Set Speed Rápida', lambda: player.set_speed_mode('rápida')),
     ('Set Speed Média', lambda: player.set_speed_mode('média')),
     ('Set Speed Lenta', lambda: player.set_speed_mode('lenta')),
+])
+
+# Sensores screen with placeholder values (editable later)
+ui.add_screen('Sensores', [
+    ('Sensor A: --', None),
+    ('Sensor B: --', None),
+    ('Sensor C: --', None),
+    ('Voltar', lambda: goto_screen_by_title('Main')),
 ])
 
 # expose ui variable in globals (some existing code checks globals().get('ui'))
@@ -404,6 +549,25 @@ while running:
             running = False
     except Exception:
         pass
+
+    # Panel navigation keys (Tab to cycle screens, arrows to move, Enter to activate)
+    try:
+        # use edge-detection: key pressed now and not pressed previously
+        if keys[pygame.K_TAB] and not prev_keys[pygame.K_TAB]:
+            ui.process_key_event(pygame.K_TAB)
+        if keys[pygame.K_RIGHT] and not prev_keys[pygame.K_RIGHT]:
+            ui.process_key_event(pygame.K_RIGHT)
+        if keys[pygame.K_LEFT] and not prev_keys[pygame.K_LEFT]:
+            ui.process_key_event(pygame.K_LEFT)
+        if keys[pygame.K_UP] and not prev_keys[pygame.K_UP]:
+            ui.process_key_event(pygame.K_UP)
+        if keys[pygame.K_DOWN] and not prev_keys[pygame.K_DOWN]:
+            ui.process_key_event(pygame.K_DOWN)
+        if keys[pygame.K_RETURN] and not prev_keys[pygame.K_RETURN]:
+            ui.process_key_event(pygame.K_RETURN)
+    except Exception:
+        pass
+
     prev_keys = keys
 
     # Panel navigation keys (Tab to cycle screens, arrows to move, Enter to activate)
@@ -738,20 +902,7 @@ while running:
         except Exception:
             speed_label = 'rápida'
             speed_pct = 100
-        mode_text = font.render(f'Mode: {player.curve_mode}  Velocidade: {speed_label} ({speed_pct}%)', True, (255, 255, 255))
-        padding = 8
-        # position at bottom-left
-        x = padding
-        y = screen.get_height() - mode_text.get_height() - padding
-
-        # draw semi-transparent background for readability
-        bg_w = mode_text.get_width() + padding * 2
-        bg_h = mode_text.get_height() + padding
-        bg_surf = pygame.Surface((bg_w, bg_h), pygame.SRCALPHA)
-        bg_surf.fill((0, 0, 0, 150))
-        screen.blit(bg_surf, (x - padding, y - padding//2))
-
-        screen.blit(mode_text, (x, y))
+        mode_str = f'Mode: {player.curve_mode}  Velocidade: {speed_label} ({speed_pct}%)'
         # draw control mode + zoom + hardcore state at top-left for quick debug
         try:
             hud_text = font.render(f'Control: {control_mode.upper()}  Zoom: {camera.scale:.2f}  Hardcore: {"ON" if hardcore_mode else "OFF"}', True, (255,255,255))
@@ -768,6 +919,17 @@ while running:
                 player.draw_icamento_ui(screen)
         except Exception:
             pass
+        # Restore original bottom-left mode display
+        padding = 8
+        x = padding
+        y = screen.get_height() - font.get_height() - padding
+        bg_w = font.size(mode_str)[0] + padding * 2
+        bg_h = font.get_height() + padding
+        bg_surf = pygame.Surface((bg_w, bg_h), pygame.SRCALPHA)
+        bg_surf.fill((0, 0, 0, 150))
+        screen.blit(bg_surf, (x - padding, y - padding//2))
+        mode_text_render = font.render(mode_str, True, (255, 255, 255))
+        screen.blit(mode_text_render, (x, y))
     except Exception:
         pass
 
@@ -931,7 +1093,32 @@ while running:
 
 
     try:
-        ui.draw(screen)
+        # Determine mode text and warning
+        # Map curve_mode to display string
+        curve_mode = getattr(player, 'curve_mode', 'desconhecido')
+        if curve_mode in ('straight', 'curve'):
+            mode_text = 'Modo: Normal'
+        elif curve_mode == 'pivotal':
+            mode_text = 'Modo: Rotação'
+        elif curve_mode == 'diagonal':
+            mode_text = 'Modo: Desliza'
+        elif curve_mode == 'icamento':
+            mode_text = 'Modo: Içamento'
+        else:
+            mode_text = f'Modo: {curve_mode}'
+        warning = None
+        # Trigger warning if player.lights[0] (red light) is on
+        if hasattr(player, 'lights') and len(player.lights) > 0 and player.lights[0]:
+            warning = 'ERRO'
+        # Otherwise, use error/warning attributes
+        elif hasattr(player, 'error') and player.error:
+            warning = str(player.error)
+        elif hasattr(player, 'warning') and player.warning:
+            warning = str(player.warning)
+        # If error is True, show 'ERRO'
+        if warning and warning.lower() == 'erro':
+            warning = 'ERRO'
+        ui.draw(screen, mode_text=mode_text, warning=warning)
     except Exception:
         pass
     pygame.display.flip()

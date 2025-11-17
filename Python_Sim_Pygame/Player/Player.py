@@ -36,7 +36,7 @@ class Player:
         self.heading = 0
         self.camera = camera
         self.modes = ["straight", "curve", "pivotal", "diagonal"]
-        self.lights = [False, False, False, False, False]  # Estado das luzes (4 luzes)
+        self.lights = [True, False, False, False, True]  # Estado das luzes (4 luzes)
         self.sirene = False  # Estado da sirene (ligada/desligada)
         
 
@@ -975,7 +975,7 @@ class Player:
             # make yellow taller so that at its lowest position it covers the gray
             yellow_h = bar_h #max(20, min(bar_h, int(bar_h * 0.85)))
             min_yellow_top = bar_y + bar_h - yellow_h  # bottom-aligned position
-            max_yellow_top = bar_y - int(bar_h * 0.60)  # allow moving above the bar a bit
+            max_yellow_top = bar_y - int(bar_h * 0.30)  # allow moving above the bar a bit
             # interpolate top by icamento_cursor so that increasing cursor moves yellow up
             yellow_top = int(min_yellow_top + (max_yellow_top - min_yellow_top) * float(self.icamento_cursor))
             yellow_x = bar_x + (bar_w // 2) - (bar_w // 2)
@@ -986,14 +986,22 @@ class Player:
                 yellow_col = (120, 100, 12)
             pygame.draw.rect(screen, yellow_col, (bar_x, yellow_top, bar_w, yellow_h))
 
-            # if active and cursor >= 0.8 show a small READY indicator near the bar
+            # Mostra valor percentual ao lado da barra (apenas se ativo)
             try:
-                if active and self.icamento_cursor >= 0.8:
-                    f = pygame.font.SysFont(None, 18)
-                    txt = f.render('ICAMENTO READY', True, (40, 200, 40))
-                    tx = bar_x - txt.get_width() - 8
-                    ty = bar_y + bar_h - txt.get_height() - 8
+                    percent = int(self.icamento_cursor * 100)
+                    f = pygame.font.SysFont(None, 22)
+                    color = (40, 200, 40) if active else (120, 120, 120)
+                    txt = f.render(f'{percent}%', True, color)
+                    tx = bar_x - txt.get_width() - 12
+                    ty = bar_y + bar_h - txt.get_height() + 16
                     screen.blit(txt, (tx, ty))
+                    # indicador READY permanece apenas quando ativo
+                    if active and self.icamento_cursor >= 0.8:
+                        f2 = pygame.font.SysFont(None, 18)
+                        txt2 = f2.render('ICAMENTO READY', True, (40, 200, 40))
+                        tx2 = bar_x - txt2.get_width() - 8
+                        ty2 = bar_y + bar_h - txt2.get_height() - 8
+                        screen.blit(txt2, (tx2, ty2))
             except Exception:
                 pass
         except Exception:
