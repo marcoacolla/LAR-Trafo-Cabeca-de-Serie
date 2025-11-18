@@ -455,12 +455,27 @@ except Exception:
 
 # FS_ADVANCED: Funções Avançadas submenu (stacked options)
 ui.add_screen('FS_ADVANCED', [
-    ('Selecionar colunas', None),
+    ('Selecionar colunas', lambda: goto_screen_by_title('FS_SELECT_COLUMNS')),
     ('Modo operação', lambda: goto_screen_by_title('FS_OPMODE')),
 ])
 try:
     for s in ui.screens:
         if s.get('title') == 'FS_ADVANCED':
+            s['navigable'] = False
+            break
+except Exception:
+    pass
+
+# FS_SELECT_COLUMNS: selection UI that draws a small robot with 4 wheel options
+ui.add_screen('FS_SELECT_COLUMNS', [
+    ('Roda TL', None),
+    ('Roda TR', None),
+    ('Roda BL', None),
+    ('Roda BR', None),
+])
+try:
+    for s in ui.screens:
+        if s.get('title') == 'FS_SELECT_COLUMNS':
             s['navigable'] = False
             break
 except Exception:

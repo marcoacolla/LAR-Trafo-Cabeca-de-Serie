@@ -124,6 +124,62 @@ class UIManager:
                     self.current = i
                     self.selected = 0
                     return
+        # Special-case: activate wheel config from FS_SELECT_COLUMNS (open a config screen)
+        if current_title == 'FS_SELECT_COLUMNS':
+            try:
+                idx = int(self.selected)
+            except Exception:
+                idx = 0
+            try:
+                # ensure we have a config screen registered
+                cfg_title = 'FS_SELECT_COLUMN_CONF'
+                cfg_index = None
+                for i, s in enumerate(self.screens):
+                    if s.get('title') == cfg_title:
+                        cfg_index = i
+                        break
+                if cfg_index is None:
+                    # add a simple config screen with two options
+                    self.add_screen(cfg_title, [('Habilitar', None), ('Desabilitar', None)])
+                    cfg_index = len(self.screens) - 1
+                # store the wheel being configured and push history
+                try:
+                    self._fs_select_columns_config_wheel = idx
+                except Exception:
+                    self._fs_select_columns_config_wheel = idx
+                try:
+                    self.history.append(self.current)
+                except Exception:
+                    pass
+                self.current = cfg_index
+                self.selected = 0
+                return
+            except Exception:
+                pass
+
+        # If we're on the wheel-config screen, apply the chosen option to the wheel and go back
+        if current_title == 'FS_SELECT_COLUMN_CONF':
+            try:
+                widx = int(getattr(self, '_fs_select_columns_config_wheel', 0))
+            except Exception:
+                widx = 0
+            try:
+                if not hasattr(self, '_fs_select_columns_selected') or self._fs_select_columns_selected is None:
+                    self._fs_select_columns_selected = [False, False, False, False]
+                # selected==0 -> Habilitar (True), selected==1 -> Desabilitar (False)
+                if int(self.selected) == 0:
+                    self._fs_select_columns_selected[widx] = True
+                else:
+                    self._fs_select_columns_selected[widx] = False
+            except Exception:
+                pass
+            # return to previous screen
+            try:
+                self.go_back()
+            except Exception:
+                pass
+            return
+
         label, cb = opts[self.selected]
         try:
             if callable(cb):
@@ -888,6 +944,162 @@ class UIManager:
             except Exception:
                 self._fs_freio_option_rects = None
             return
+        elif title == 'FS_SELECT_COLUMN_CONF':
+            # Config screen for a specific wheel: Habilitar / Desabilitar
+            # wheel index stored in self._fs_select_columns_config_wheel
+            title_text = 'Configurar roda'
+            try:
+                header_font = pygame.font.SysFont(None, int(self.font.get_height() * 1.1))
+            except Exception:
+                header_font = self.font
+            header_render = header_font.render(title_text, True, (0,70,220))
+            hx = self.panel_rect.x + (self.panel_rect.width - header_render.get_width()) // 2
+            hy = self.panel_rect.y + 6
+            # back arrow at top-left
+            try:
+                arrow_w = 20
+                arrow_h = max(header_render.get_height(), 18)
+                arrow_x = self.panel_rect.x + 8
+                arrow_y = hy + (header_render.get_height() - arrow_h) // 2
+                arrow_btn = pygame.Rect(arrow_x, arrow_y, arrow_w, arrow_h)
+                pygame.draw.rect(surf, (255,255,255), arrow_btn)
+                cx = arrow_btn.x + arrow_btn.width // 2
+                cy = arrow_btn.y + arrow_btn.height // 2
+                pts = [(cx+6, cy-6), (cx-6, cy), (cx+6, cy+6)]
+                pygame.draw.polygon(surf, (0,70,220), pts)
+                self._back_arrow_rect = arrow_btn.inflate(6, 6)
+            except Exception:
+                self._back_arrow_rect = None
+            surf.blit(header_render, (hx, hy))
+
+            # show wheel name (TL/TR/BL/BR) if available
+            wheel_names = ['TL', 'TR', 'BL', 'BR']
+            try:
+                widx = int(getattr(self, '_fs_select_columns_config_wheel', 0))
+            except Exception:
+                widx = 0
+            try:
+                wheel_label = f'Roda {wheel_names[widx]}'
+            except Exception:
+                wheel_label = 'Roda'
+            wl_txt = self.font.render(wheel_label, True, (0,70,220))
+            surf.blit(wl_txt, (self.panel_rect.x + (self.panel_rect.width - wl_txt.get_width())//2, hy + header_render.get_height() + 6))
+
+            # two side-by-side options: Habilitar / Desabilitar
+            opt_labels = ['Habilitar', 'Desabilitar']
+            gap = 16
+            texts = [self.font.render(l, True, (0,70,220)) for l in opt_labels]
+            txt_widths = [t.get_width() for t in texts]
+            btn_ws = [w + 24 for w in txt_widths]
+            total_w = sum(btn_ws) + gap * (len(btn_ws)-1)
+            start_x = self.panel_rect.x + (self.panel_rect.width - total_w)//2
+            oy = hy + header_render.get_height() + 28
+            x = start_x
+            rects = []
+            for i, label in enumerate(opt_labels):
+                sel = (self.selected == i)
+                w = btn_ws[i]
+                h = self.font.get_height() + 8
+                if sel:
+                    pygame.draw.rect(surf, (0,70,220), (x, oy, w, h))
+                    txt = self.font.render(label, True, (255,255,255))
+                else:
+                    pygame.draw.rect(surf, (255,255,255), (x, oy, w, h))
+                    txt = self.font.render(label, True, (0,70,220))
+                surf.blit(txt, (x + (w - txt.get_width())//2, oy + 4))
+                rects.append(pygame.Rect(x, oy, w, h))
+                x += w + gap
+            try:
+                self._fs_select_columns_conf_option_rects = rects
+            except Exception:
+                self._fs_select_columns_conf_option_rects = None
+            return
+        elif title == 'FS_SELECT_COLUMNS':
+            # Small robot drawing with 4 wheel selectable rectangles (TL, TR, BL, BR)
+            title_text = 'Selecionar colunas'
+            try:
+                header_font = pygame.font.SysFont(None, int(self.font.get_height() * 1.1))
+            except Exception:
+                header_font = self.font
+            header_render = header_font.render(title_text, True, (0,70,220))
+            hx = self.panel_rect.x + (self.panel_rect.width - header_render.get_width()) // 2
+            hy = self.panel_rect.y + 6
+            # back arrow at top-left
+            try:
+                arrow_w = 20
+                arrow_h = max(header_render.get_height(), 18)
+                arrow_x = self.panel_rect.x + 8
+                arrow_y = hy + (header_render.get_height() - arrow_h) // 2
+                arrow_btn = pygame.Rect(arrow_x, arrow_y, arrow_w, arrow_h)
+                pygame.draw.rect(surf, (255,255,255), arrow_btn)
+                cx = arrow_btn.x + arrow_btn.width // 2
+                cy = arrow_btn.y + arrow_btn.height // 2
+                pts = [(cx+6, cy-6), (cx-6, cy), (cx+6, cy+6)]
+                pygame.draw.polygon(surf, (0,70,220), pts)
+                self._back_arrow_rect = arrow_btn.inflate(6, 6)
+            except Exception:
+                self._back_arrow_rect = None
+            surf.blit(header_render, (hx, hy))
+
+            # compute robot drawing area centered in panel below header
+            area_x = self.panel_rect.x + 12
+            area_w = self.panel_rect.width - 24
+            area_y = hy + header_render.get_height() + 8
+            area_h = self.panel_rect.height - (area_y - self.panel_rect.y) - 12
+
+            # robot body: make it a bit larger so wheels sit halfway inside/outside
+            body_w = int(area_w * 0.42)
+            body_h = int(area_h * 0.5)
+            body_x = self.panel_rect.x + (self.panel_rect.width - body_w) // 2
+            body_y = area_y + (area_h - body_h)//2
+            body_rect = pygame.Rect(body_x, body_y, body_w, body_h)
+            # draw body as light-blue fill with blue border
+            pygame.draw.rect(surf, (200,230,255), body_rect)
+            pygame.draw.rect(surf, (0,70,220), body_rect, 2)
+
+            # wheel size and positions: make wheels more stretched (wide and short)
+            w_w = max(14, int(min(body_w, body_h) * 0.6))
+            w_h = max(8, int(w_w * 0.38))
+            # Position wheels half inside/half outside the body (center aligned to edges)
+            tl = pygame.Rect(body_rect.left - w_w//2, body_rect.top - w_h//2, w_w, w_h)
+            tr = pygame.Rect(body_rect.right - w_w//2, body_rect.top - w_h//2, w_w, w_h)
+            bl = pygame.Rect(body_rect.left - w_w//2, body_rect.bottom - w_h//2, w_w, w_h)
+            br = pygame.Rect(body_rect.right - w_w//2, body_rect.bottom - w_h//2, w_w, w_h)
+
+            wheel_rects = [tl, tr, bl, br]
+
+            # initialize selection state if missing
+            try:
+                if not hasattr(self, '_fs_select_columns_selected') or self._fs_select_columns_selected is None:
+                    self._fs_select_columns_selected = [False, False, False, False]
+            except Exception:
+                self._fs_select_columns_selected = [False, False, False, False]
+
+            # draw wheels: blue fill when toggled; otherwise white with blue border
+            for i, r in enumerate(wheel_rects):
+                sel_state = False
+                try:
+                    sel_state = bool(self._fs_select_columns_selected[i])
+                except Exception:
+                    sel_state = False
+                focused = False
+                try:
+                    focused = (int(self.selected) == i)
+                except Exception:
+                    focused = False
+                # Wheel is filled blue when focused OR when enabled (sel_state)
+                if focused or sel_state:
+                    pygame.draw.rect(surf, (0,70,220), r)
+                else:
+                    pygame.draw.rect(surf, (255,255,255), r)
+                    pygame.draw.rect(surf, (0,70,220), r, 2)
+
+            # store rects for click handling
+            try:
+                self._fs_select_columns_wheel_rects = wheel_rects
+            except Exception:
+                self._fs_select_columns_wheel_rects = None
+            return
         else:
             # Default: draw title and options horizontally
             t = self.font.render(title, True, (0, 0, 0))
@@ -906,6 +1118,7 @@ class UIManager:
                 else:
                     surf.blit(txt, (x + 6, oy))
                 x += item_w + pad_x
+
 
     # compatibility wrappers
     def process_key_event(self, key):
@@ -946,9 +1159,9 @@ class UIManager:
         try:
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 pos = event.pos
-                # prioritize back-arrow (Menu_01/other submenus)
+                # prioritize back-arrow on any submenu that exposes _back_arrow_rect
                 title = self.screens[self.current].get('title', '') if self.screens else ''
-                if title in ('Menu_01', 'FS_MENU', 'Sensores') and getattr(self, '_back_arrow_rect', None) and self._back_arrow_rect.collidepoint(pos):
+                if getattr(self, '_back_arrow_rect', None) and self._back_arrow_rect.collidepoint(pos):
                     # clicked back arrow on a submenu: go back in history
                     try:
                         self.go_back()
@@ -1048,6 +1261,27 @@ class UIManager:
                     except Exception:
                         pass
                     return True
+                # FS_SELECT_COLUMNS wheel clicks
+                if title == 'FS_SELECT_COLUMNS' and getattr(self, '_fs_select_columns_wheel_rects', None):
+                    for idx, r in enumerate(self._fs_select_columns_wheel_rects):
+                        if r.collidepoint(pos):
+                            try:
+                                # set selection index and open wheel config (activate)
+                                self.selected = idx
+                                self.activate()
+                            except Exception:
+                                pass
+                            return True
+                # Wheel config screen option clicks
+                if title == 'FS_SELECT_COLUMN_CONF' and getattr(self, '_fs_select_columns_conf_option_rects', None):
+                    for idx, r in enumerate(self._fs_select_columns_conf_option_rects):
+                        if r.collidepoint(pos):
+                            try:
+                                self.selected = idx
+                                self.activate()
+                            except Exception:
+                                pass
+                            return True
         except Exception:
             pass
         return False
@@ -1060,7 +1294,18 @@ class UIManager:
                 # sanity check index
                 if 0 <= prev < len(self.screens):
                     self.current = prev
-                    self.selected = 0
+                    # if returning to FS_SELECT_COLUMNS, restore the previously-configured wheel focus
+                    try:
+                        title = self.screens[self.current].get('title', '')
+                    except Exception:
+                        title = ''
+                    if title == 'FS_SELECT_COLUMNS' and hasattr(self, '_fs_select_columns_config_wheel'):
+                        try:
+                            self.selected = int(self._fs_select_columns_config_wheel)
+                        except Exception:
+                            self.selected = 0
+                    else:
+                        self.selected = 0
                     return True
         except Exception:
             pass

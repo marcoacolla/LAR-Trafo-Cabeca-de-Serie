@@ -351,19 +351,42 @@ class Player:
         lx_treated, ly_treated = self.normalize_joystick(lx, ly)
         rx_treated, ry_treated = self.normalize_joystick(rx, ry)
         # Progress any in-progress transition first
+
+
+        robot_move_joystick = ry
+        robot_move_joystick_t = ry_treated
+
+        robot_curve_joystick = rx
+        robot_curve_joystick_t = rx_treated
+
+        robot_pivotal_x_joystick = rx
+        robot_pivotal_x_joystick_t = rx_treated
+
+        robot_pivotal_spin_joystick = lx
+        robot_pivotal_spin_joystick_t = lx_treated
+
+        robot_diagonal_control = rx
+        robot_diagonal_control_t = rx_treated
+
+        robot_icamento_control = ry
+        robot_icamento_control_t = ry_treated
+
+        icr_y_axis_joystick = ly
+        icr_y_axis_joystick_t = ly_treated
+
         self.update_transition()
         if self.is_transitioning:
             return
 
         # Movement magnitude scaled by axis |ly|
         move_amt = 0.0
-        if abs(ry) > DEAD:
+        if abs(robot_move_joystick) > DEAD:
             # assume joystick up is negative (common convention); treat negative as forward
-            move_amt = min(1.0, abs(ry_treated))
+            move_amt = min(1.0, abs(robot_move_joystick_t))
 
         # Map right_x (-1..1) to icr_bias (0..1)
         try:
-            self.icr_bias = max(0.0, min(1.0, (ly_treated + 1.0) / 2.0))
+            self.icr_bias = max(0.0, min(1.0, (icr_y_axis_joystick_t + 1.0) / 2.0))
         except Exception:
             pass
 
@@ -372,14 +395,14 @@ class Player:
             if abs(self.icr_bias) != .5:
                 self.setMode('curve', curveStart=GLV.CURVE_MAX_RADIUS)
             if move_amt > 0:
-                if ry < 0:
+                if robot_move_joystick < 0:
                     self.makeMovement('backward', step=speed * move_amt)
                 else:
                     self.makeMovement('forward', step=speed * move_amt)
-            if abs(rx) > DEAD:
+            if abs(robot_curve_joystick) > DEAD:
                 # switch to curve mode with angle_offset mapped from left_x
                 try:
-                    new_offset = rx_treated * GLV.CURVE_MAX_RADIUS
+                    new_offset = robot_curve_joystick_t * GLV.CURVE_MAX_RADIUS
                     # clamp
                     new_offset = max(-GLV.CURVE_MAX_RADIUS, min(GLV.CURVE_MAX_RADIUS, new_offset))
                     self.setMode('curve', curveStart=new_offset)
@@ -389,26 +412,26 @@ class Player:
 
         elif self.curve_mode in ("curve", "pivotal"):
             if self.curve_mode == "curve":
-                if abs(rx) < DEAD and self.icr_bias == 0.5:
+                if abs(robot_curve_joystick) < DEAD and self.icr_bias == 0.5:
                     self.setMode('straight')
                 # Map left_x to angle_offset
                 try:
                     # módulo de lx entre 0 e 1
-                    mag = abs(rx_treated)
+                    mag = abs(robot_curve_joystick_t)
                     expo = 2.5
                     mag = mag ** (1/expo)
                     # interpolação invertida: mag=0 → max, mag=1 → min
                     radius = GLV.CURVE_MAX_RADIUS - (GLV.CURVE_MAX_RADIUS - GLV.CURVE_MIN_RADIUS) * mag
                     # aplica o sinal de lx (pra direita/esquerda)
-                    new_offset = math.copysign(radius, -rx_treated)
+                    new_offset = math.copysign(radius, -robot_curve_joystick_t)
 
                     self.angle_offset = new_offset
                 except Exception:
                     pass
             else:
                 # pivotal mode: left_x controls angle_offset directly
-                if abs(rx) > DEAD:
-                    self.angle_offset = -rx_treated * GLV.CURVE_MIN_RADIUS
+                if abs(robot_pivotal_x_joystick) > DEAD:
+                    self.angle_offset = -robot_pivotal_x_joystick_t * GLV.CURVE_MIN_RADIUS
                 else:
                     self.angle_offset = 0
 
@@ -421,28 +444,28 @@ class Player:
             
             if self.curve_mode == 'curve':
                 if move_amt > 0:
-                    if rx_treated < 0:
-                        if ry_treated < 0 :
+                    if robot_curve_joystick_t < 0:
+                        if robot_move_joystick_t < 0 :
                             self.makeMovement('forward', step=speed * move_amt)
                         else:
                             self.makeMovement('backward', step=speed * move_amt)
                     else:
-                        if ry_treated < 0 :
+                        if robot_move_joystick_t < 0 :
                             self.makeMovement('backward', step=speed * move_amt)
                         else:
                             self.makeMovement('forward', step=speed * move_amt)
             else:  # pivotal
-                move_amt = abs(lx_treated)
+                move_amt = abs(robot_pivotal_spin_joystick_t)
                 if move_amt > DEAD:
-                    if lx_treated < 0:
+                    if robot_pivotal_spin_joystick_t < 0:
                         self.makeMovement('backward', step=speed * move_amt)
                     else:
                         self.makeMovement('forward', step=speed * move_amt)
 
         elif self.curve_mode == 'diagonal':
             # allow rotation of wheel headings via left_x and movement via left_y
-            if abs(rx) > DEAD:
-                WHEEL_TURN_STEP = 5.0 * rx_treated
+            if abs(robot_diagonal_control) > DEAD:
+                WHEEL_TURN_STEP = 5.0 * robot_diagonal_control_t
                 for w in self.wheels:
                     w.setHeading((w.getHeading() + WHEEL_TURN_STEP) % 360)
             if move_amt > 0:
@@ -454,10 +477,10 @@ class Player:
         elif self.curve_mode == 'icamento':
             # left_y moves the cursor; also moves vehicle
             CURSOR_SENS = 0.035
-            if abs(ry) > DEAD:
+            if abs(robot_icamento_control) > DEAD:
                 # negative ly -> move up (decrease cursor)
-                self.icamento_cursor = max(0.0, min(1.0, self.icamento_cursor + (-ry_treated) * CURSOR_SENS))
-                if ry < 0:
+                self.icamento_cursor = max(0.0, min(1.0, self.icamento_cursor + (-robot_icamento_control_t) * CURSOR_SENS))
+                if robot_icamento_control < 0:
                     self.makeMovement('forward', step=speed * move_amt)
                 else:
                     self.makeMovement('backward', step=speed * move_amt)
