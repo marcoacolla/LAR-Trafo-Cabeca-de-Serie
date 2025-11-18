@@ -27,6 +27,11 @@ class UIManager:
         # second-page sensor vars
         self.anq_est = 7
         self.velocidade = 0.5
+        # Joystick button mapping and state
+        # Default map: button 0 -> up, 1 -> down, 2 -> enter, 3 -> back
+        # You can override with `set_joystick_button_map`.
+        self.joy_button_map = {0: 'up', 1: 'down', 2: 'enter', 3: 'back'}
+        self.joy_button_states = {}
 
     def add_screen(self, title, options):
         # By default screens are navigable by left/right. Pass title=='Menu_01' or
@@ -193,6 +198,70 @@ class UIManager:
         if not self.screens:
             return []
         return self.screens[self.current].get('options', [])
+
+    # --- Joystick helpers -------------------------------------------------
+    def set_joystick_button_map(self, mapping):
+        """Set joystick button -> action mapping.
+
+        Mapping keys are button indices (ints). Values may be one of the
+        built-in action names: 'up', 'down', 'enter', 'back', 'next_screen',
+        'prev_screen', or a callable to execute when the button is pressed.
+
+        Example:
+            ui.set_joystick_button_map({0: 'up', 1: 'down', 2: 'enter', 3: 'back'})
+        """
+        try:
+            self.joy_button_map = dict(mapping)
+        except Exception:
+            pass
+
+    def process_joy_button(self, button_idx, pressed=True):
+        """Process a joystick button event.
+
+        Call this from the main loop when you receive `JOYBUTTONDOWN` /
+        `JOYBUTTONUP` events. By default actions are triggered only on
+        the press (`pressed==True`). Returns True if the event was
+        handled by the UI manager.
+        """
+        try:
+            # Only act on press events by default
+            if not pressed:
+                # optionally track state but do not act on release
+                self.joy_button_states[button_idx] = False
+                return False
+            self.joy_button_states[button_idx] = True
+            action = self.joy_button_map.get(button_idx)
+            if not action:
+                return False
+            # Built-in action names
+            if action == 'up':
+                self.select_prev()
+                return True
+            if action == 'down':
+                self.select_next()
+                return True
+            if action == 'enter':
+                self.activate()
+                return True
+            if action == 'back':
+                self.go_back()
+                return True
+            if action == 'next_screen':
+                self.next_screen()
+                return True
+            if action == 'prev_screen':
+                self.prev_screen()
+                return True
+            # allow mapping directly to a callable
+            if callable(action):
+                try:
+                    action()
+                    return True
+                except Exception:
+                    return False
+        except Exception:
+            return False
+        return False
 
     def update_mode_display(self, new_mode):
         try:
