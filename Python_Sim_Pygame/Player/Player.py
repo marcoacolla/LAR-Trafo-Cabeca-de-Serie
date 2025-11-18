@@ -36,7 +36,7 @@ class Player:
         self.heading = 0
         self.camera = camera
         self.modes = ["straight", "curve", "pivotal", "diagonal"]
-        self.lights = [True, False, False, False, True]  # Estado das luzes (4 luzes)
+        self.lights = [False, False, False, False, False]  # Estado das luzes (4 luzes)
         self.sirene = False  # Estado da sirene (ligada/desligada)
         
 
@@ -356,17 +356,17 @@ class Player:
         robot_move_joystick = ry
         robot_move_joystick_t = ry_treated
 
-        robot_curve_joystick = rx
-        robot_curve_joystick_t = rx_treated
+        robot_curve_joystick = lx
+        robot_curve_joystick_t = lx_treated
 
-        robot_pivotal_x_joystick = rx
-        robot_pivotal_x_joystick_t = rx_treated
+        robot_pivotal_x_joystick = lx
+        robot_pivotal_x_joystick_t = lx_treated
 
-        robot_pivotal_spin_joystick = lx
-        robot_pivotal_spin_joystick_t = lx_treated
+        robot_pivotal_spin_joystick = rx
+        robot_pivotal_spin_joystick_t = rx_treated
 
-        robot_diagonal_control = rx
-        robot_diagonal_control_t = rx_treated
+        robot_diagonal_control = lx
+        robot_diagonal_control_t = lx_treated
 
         robot_icamento_control = ry
         robot_icamento_control_t = ry_treated
