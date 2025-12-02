@@ -24,13 +24,15 @@ import Player.Player as player
 
 
 class Joystick:
-    def __init__(self):
+    def __init__(self, ui_manager=None):
         # CAN configuration (same as original)
         self.BITRATE = 500000
         self.CAN_CHANNEL_JOYSTICK = 0x200
         self.CAN_CHANNEL_SELETORA = 0x201
         self.CAN_CHANNEL_LIGHTS = 0x202
         self.CAN_CHANNEL_SPEED = 0x203
+        # additional channel: external system sends image IDs (e.g. ASCII '0C')
+        self.CAN_CHANNEL_IMAGE_ID = 0x210
 
         # state
         self.lights = [False, False, False, False, False]
@@ -42,6 +44,10 @@ class Joystick:
         self.currentSpeed = 0
         self.hasChangedMode = False
         self.hasChangedSpeed = False
+        # image id handling
+        self._last_image_id = None
+        # optional UI manager (or any callable with set_image_id method)
+        self.ui_manager = ui_manager
 
         self.bus = None
         self.available = False
@@ -117,6 +123,41 @@ class Joystick:
                         if selectedSpeed != self.currentSpeed:
                             self.currentSpeed = selectedSpeed
                             self.hasChangedSpeed = True
+                elif msg.arbitration_id == self.CAN_CHANNEL_IMAGE_ID:
+                    # image id expected as ASCII text like b'0C' or b'0C\x00'
+                    try:
+                        # strip trailing nulls and whitespace
+                        sid = data.rstrip(b"\x00\r\n ")
+                        # try decode as ascii/utf-8
+                        try:
+                            id_str = sid.decode('ascii')
+                        except Exception:
+                            try:
+                                id_str = sid.decode('utf-8', errors='ignore')
+                            except Exception:
+                                id_str = None
+                        if id_str:
+                            # normalize: uppercase and strip
+                            id_str = id_str.strip().upper()
+                            if id_str != self._last_image_id:
+                                self._last_image_id = id_str
+                                # inform ui_manager if available
+                                try:
+                                    if self.ui_manager is not None:
+                                        # prefer a set_image_id method
+                                        if hasattr(self.ui_manager, 'set_image_id'):
+                                            self.ui_manager.set_image_id(id_str)
+                                        else:
+                                            # if ui_manager is a callable, call it
+                                            if callable(self.ui_manager):
+                                                try:
+                                                    self.ui_manager(id_str)
+                                                except Exception:
+                                                    pass
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
             except Exception:
                 # ignore malformed messages
                 continue

@@ -1,11 +1,12 @@
 import pygame
+import os
 from .screens.screen_base import ScreenBase
 
 class UIManager:
     """Simple UI manager for bottom-left panel.
     Keeps screens modular; exposes navigation API compatible with previous code.
     """
-    def __init__(self, screen, panel_rect=None, font=None, player=None):
+    def __init__(self, screen, panel_rect=None, font=None, player=None, image_only=True, default_image_id='0C'):
         self.screen = screen
         self.font = font or pygame.font.SysFont(None, 28)
         self.screens = []
@@ -24,6 +25,38 @@ class UIManager:
             print(f"[UIManager] Panel position: {self.panel_rect}")
         else:
             self.panel_rect = pygame.Rect(panel_rect)
+        # Image display settings: external system will send IDs like '0C' -> file 'img_0C.bmp'
+        # Default image directory is `ui/screens/screens_png` next to this file.
+        try:
+            this_dir = os.path.dirname(__file__)
+            # prefer ui/screens/screens_png (matches repo layout); fallback to ui/screens_png
+            candidate = os.path.join(this_dir, 'screens', 'screens_png')
+            if os.path.exists(candidate):
+                self.image_dir = candidate
+            else:
+                alt = os.path.join(this_dir, 'screens_png')
+                if os.path.exists(alt):
+                    self.image_dir = alt
+                else:
+                    self.image_dir = os.path.join(this_dir, 'screens', 'screens_png')
+        except Exception:
+            self.image_dir = 'screens_png'
+        # cache of loaded images by id (pygame.Surface)
+        self._image_cache = {}
+        self._current_image_id = None
+        self._current_image_surface = None
+        # If True, skip all legacy UI drawing and show BMPs only (or a placeholder)
+        self.image_only = bool(image_only)
+        # Optionally set an initial image id for quick testing
+        try:
+            if default_image_id is not None:
+                self.set_image_id(default_image_id)
+        except Exception:
+            pass
+        # Image scaling settings: 'nearest' (default) or 'smooth'
+        self.image_scale_mode = 'nearest'
+        # preserve aspect ratio when scaling
+        self.image_preserve_aspect = True
         # second-page sensor vars
         self.anq_est = 7
         self.velocidade = 0.5
@@ -272,10 +305,176 @@ class UIManager:
         except Exception:
             pass
 
+    # --- Dynamic BMP image display (external system provides ID like '0C') ----
+    def set_image_dir(self, path):
+        """Set base directory where image files `img_<ID>.bmp` will be looked up."""
+        try:
+            if path is None:
+                return
+            self.image_dir = str(path)
+        except Exception:
+            pass
+
+    def set_panel_size(self, width, height):
+        """Resize the UI panel where BMPs are drawn."""
+        try:
+            self.panel_rect.width = int(width)
+            self.panel_rect.height = int(height)
+        except Exception:
+            pass
+
+    def set_image_scale_mode(self, mode):
+        """Set scaling mode: 'nearest' or 'smooth'. 'nearest' preserves hard edges.
+
+        Example: ui_manager.set_image_scale_mode('nearest')
+        """
+        try:
+            m = str(mode).lower()
+            if m in ('nearest', 'smooth'):
+                self.image_scale_mode = m
+        except Exception:
+            pass
+
+    def _load_image_for_id(self, id_str):
+        """Load image file for given id and return a pygame.Surface or None."""
+        if not id_str:
+            return None
+        key = str(id_str)
+        # allow cached images
+        try:
+            if key in self._image_cache:
+                return self._image_cache[key]
+        except Exception:
+            pass
+        # build filename: img_<ID>.bmp (case-sensitive as provided)
+        fname = f"img_{key}.bmp"
+        fp = os.path.join(self.image_dir, fname)
+        try:
+            # Debug: remember attempted path
+            self._last_image_load_path = fp
+            surf = pygame.image.load(fp)
+            # convert to display format (keep alpha if present)
+            try:
+                surf = surf.convert_alpha()
+            except Exception:
+                try:
+                    surf = surf.convert()
+                except Exception:
+                    pass
+            self._image_cache[key] = surf
+            return surf
+        except Exception:
+            # file not found or load failed
+            try:
+                exists = os.path.exists(fp)
+                dir_exists = os.path.exists(self.image_dir)
+                dir_list = None
+                if dir_exists:
+                    try:
+                        dir_list = os.listdir(self.image_dir)
+                    except Exception:
+                        dir_list = 'unreadable'
+                print(f"[UIManager] Failed to load image for id {key} from {fp}; exists={exists}; image_dir_exists={dir_exists}; image_dir_list={dir_list}")
+            except Exception:
+                pass
+            return None
+
+    def set_image_id(self, id_str, force_reload=False):
+        """Display the image corresponding to `id_str` (e.g. '0C').
+        If `force_reload` is True, reloads from disk even if cached.
+        """
+        try:
+            key = str(id_str) if id_str is not None else None
+        except Exception:
+            key = None
+        if key is None:
+            self.clear_image()
+            return
+        # If force_reload, remove from cache so next load will read disk
+        if force_reload:
+            try:
+                if key in self._image_cache:
+                    del self._image_cache[key]
+            except Exception:
+                pass
+        # Set the current id; actual loading is lazy and happens in draw()
+        self._current_image_id = key
+        # reset surface so draw() will try to load it
+        self._current_image_surface = None
+
+    def clear_image(self):
+        try:
+            self._current_image_id = None
+            self._current_image_surface = None
+        except Exception:
+            pass
+
     def draw(self, surf=None, mode_text=None, warning=None):
         self.panel_rect.y = 450
         if surf is None:
             surf = self.screen
+        # If we're in image-only mode, either draw the current image (scaled)
+        # or draw a visible placeholder and skip legacy UI drawing.
+        if self.image_only:
+            try:
+                # Lazy-load the image if we have an id but no surface yet
+                if self._current_image_id and not self._current_image_surface:
+                    try:
+                        loaded = self._load_image_for_id(self._current_image_id)
+                        if loaded:
+                            self._current_image_surface = loaded
+                    except Exception:
+                        pass
+
+                if self._current_image_surface:
+                    try:
+                        target_w = max(1, self.panel_rect.width)
+                        target_h = max(1, self.panel_rect.height)
+                        img = self._current_image_surface
+                        src_w, src_h = img.get_size()
+                        # preserve aspect ratio if requested
+                        if self.image_preserve_aspect and src_w > 0 and src_h > 0:
+                            scale = min(target_w / src_w, target_h / src_h)
+                            new_w = max(1, int(src_w * scale))
+                            new_h = max(1, int(src_h * scale))
+                            target_size = (new_w, new_h)
+                        else:
+                            target_size = (target_w, target_h)
+                        if img.get_size() != target_size:
+                            if getattr(self, 'image_scale_mode', 'nearest') == 'smooth':
+                                img = pygame.transform.smoothscale(img, target_size)
+                            else:
+                                img = pygame.transform.scale(img, target_size)
+                        # center image inside panel
+                        dx = self.panel_rect.x + (self.panel_rect.width - img.get_width()) // 2
+                        dy = self.panel_rect.y + (self.panel_rect.height - img.get_height()) // 2
+                        surf.blit(img, (dx, dy))
+                    except Exception:
+                        try:
+                            surf.blit(self._current_image_surface, (self.panel_rect.x, self.panel_rect.y))
+                        except Exception:
+                            pass
+                else:
+                    # draw placeholder so it's obvious no image was found
+                    try:
+                        pygame.draw.rect(surf, (255, 255, 255), self.panel_rect)
+                        pygame.draw.rect(surf, (200, 0, 0), self.panel_rect, 2)
+                        label = f'Missing: img_{self._current_image_id or "<ID>"}.bmp'
+                        t = self.font.render(label, True, (0, 0, 0))
+                        tx = self.panel_rect.x + (self.panel_rect.width - t.get_width())//2
+                        ty = self.panel_rect.y + (self.panel_rect.height - t.get_height())//2
+                        surf.blit(t, (tx, ty))
+                        # also print a helpful debug line with the folder we looked into
+                        try:
+                            print(f"[UIManager] Image id '{self._current_image_id}' missing. Looked in: {self.image_dir}")
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+                return
+            except Exception:
+                # on any error, continue to legacy UI drawing fallback
+                pass
         # panel background
         pygame.draw.rect(surf, (255, 255, 255), self.panel_rect)
         pygame.draw.rect(surf, (200, 0, 0), self.panel_rect, 2)
