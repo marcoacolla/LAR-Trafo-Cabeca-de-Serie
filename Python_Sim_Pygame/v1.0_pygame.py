@@ -12,131 +12,6 @@ except Exception:
     # best-effort import; if running from different cwd this may fail
     UIManager = None
 
-pygame.init()
-# Main display and layout: reserve a right-side panel for customizable UI
-PANEL_WIDTH = 300  # largura padrão do painel lateral (personalizável)
-SCREEN_W = 800 + PANEL_WIDTH
-SCREEN_H = 600
-screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))  # largura x altura
-pygame.display.set_caption("Pygame Trafo Simulator")
-
-
-
-
-# Carregar imagem do mapa
-map_path = os.path.join(os.path.dirname(__file__), 'World', 'Obstacles', 'Map1.png')
-map_image = pygame.image.load(map_path).convert()
-
-
-# Lightweight: find a green pixel (centroid of green area) to use as spawn and to ignore in collisions
-def find_green_center(img, thresh=200):
-    w, h = img.get_width(), img.get_height()
-    totx = toty = count = 0
-    for y in range(h):
-        for x in range(w):
-            r, g, b, *rest = img.get_at((x, y))
-            if g >= thresh and r < 100 and b < 100:
-                totx += x; toty += y; count += 1
-    if count == 0:
-        return None
-    return (totx / count, toty / count)
-
-
-def find_blue_center(img):
-    """Find centroid of a blue marker by testing if B is significantly
-    larger than R and G (robust to different blue intensities).
-    Returns (x,y) in image/world coordinates or None if not found."""
-    w, h = img.get_width(), img.get_height()
-    totx = toty = count = 0
-    for y in range(h):
-        for x in range(w):
-            r, g, b, *rest = img.get_at((x, y))
-            # blue if b is notably higher than r and g and has decent intensity
-            if b > max(r, g) + 30 and b > 80:
-                totx += x; toty += y; count += 1
-    if count == 0:
-        return None
-    return (totx / count, toty / count)
-
-
-# Build a virtual collision map once: a grid (bytearray per row) where 1 means occupied
-def build_collision_grid(img):
-    w, h = img.get_width(), img.get_height()
-    grid = [bytearray(w) for _ in range(h)]
-    occupied = 0
-    for y in range(h):
-        row = grid[y]
-        for x in range(w):
-            r, g, b, *rest = img.get_at((x, y))
-            # treat strong green as spawn/empty, white as empty, blue marker as empty;
-            # everything else is collision
-            # ignore green spawn area
-            if g >= 200 and r < 100 and b < 100:
-                continue
-            # ignore white background
-            if (r, g, b) == (255, 255, 255):
-                continue
-            # ignore blue marker (B significantly larger than R/G and reasonably bright)
-            if b > max(r, g) + 30 and b > 80:
-                continue
-            row[x] = 1
-            occupied += 1
-    return grid, occupied
-
-
-# Build collision map once
-collision_grid, occupied_pixels = build_collision_grid(map_image)
-print(f"Collision grid built: {occupied_pixels} occupied pixels")
-
-# determine spawn from green area if present
-found = find_green_center(map_image)
-if found:
-    mx, my = found
-    SPAWN_POINT = (mx, my)
-else:
-    SPAWN_POINT = (200, 200)
-
-camera = Camera(SCREEN_W, SCREEN_H)
-player = Player(SPAWN_POINT, screen, camera)
-from World.Trafo import Trafo
-# optional joystick controller (provided in Player/Joystick.py)
-
-from Player.Joystick import Joystick as JoystickController
-
-# Hardcore mode: when True, death is blocking and player cannot move until respawn.
-# When False, death shows an overlay but player can still move; if the player
-# exits the collision area the death state is cleared.
-hardcore_mode = False
-
-# control mode for input: 'keyboard' or 'joystick'
-control_mode = 'keyboard'
-joystick_controller = JoystickController()
-# prefer explicit availability flag from the adapter
-try:
-    joystick_available = bool(getattr(joystick_controller, 'available', False))
-except Exception:
-    joystick_available = False
-# last printed control mode to avoid repeated logs
-last_printed_control_mode = control_mode
-
-# spawn a trafo at blue marker if present, otherwise use a fallback near player
-blue_found = find_blue_center(map_image)
-if blue_found:
-    bx, by = blue_found
-    trafo = Trafo(bx, by, size=60)
-    # remember initial trafo spawn so we can reset it on player death
-    trafo.initial_pos = (bx, by)
-else:
-    try:
-        trafo = Trafo(SPAWN_POINT[0] + 120, SPAWN_POINT[1], size=60)
-        trafo.initial_pos = (SPAWN_POINT[0] + 120, SPAWN_POINT[1])
-    except Exception:
-        trafo = Trafo(SPAWN_POINT[0] + 120 if isinstance(SPAWN_POINT, tuple) else 300, SPAWN_POINT[1] if isinstance(SPAWN_POINT, tuple) else 200, size=60)
-        try:
-            trafo.initial_pos = (SPAWN_POINT[0] + 120 if isinstance(SPAWN_POINT, tuple) else 300, SPAWN_POINT[1] if isinstance(SPAWN_POINT, tuple) else 200)
-        except Exception:
-            trafo.initial_pos = (300, 200)
-
 # -------------------------
 # SidePanel: minimal, customizable right-side UI (module-level)
 # -------------------------
@@ -344,6 +219,106 @@ class SidePanel:
         except Exception:
             pass
 
+
+pygame.init()
+# Main display and layout: reserve a right-side panel for customizable UI
+PANEL_WIDTH = 300  # largura padrão do painel lateral (personalizável)
+SCREEN_W = 800 + PANEL_WIDTH
+SCREEN_H = 600
+screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))  # largura x altura
+pygame.display.set_caption("Pygame Trafo Simulator")
+
+
+
+
+# Carregar imagem do mapa
+map_path = os.path.join(os.path.dirname(__file__), 'World', 'Obstacles', 'Map1.png')
+map_image = pygame.image.load(map_path).convert()
+
+
+# Lightweight: find a green pixel (centroid of green area) to use as spawn and to ignore in collisions
+def find_green_center(img, thresh=200):
+    w, h = img.get_width(), img.get_height()
+    totx = toty = count = 0
+    for y in range(h):
+        for x in range(w):
+            r, g, b, *rest = img.get_at((x, y))
+            if g >= thresh and r < 100 and b < 100:
+                totx += x; toty += y; count += 1
+    if count == 0:
+        return None
+    return (totx / count, toty / count)
+
+
+def find_blue_center(img):
+    """Find centroid of a blue marker by testing if B is significantly
+    larger than R and G (robust to different blue intensities).
+    Returns (x,y) in image/world coordinates or None if not found."""
+    w, h = img.get_width(), img.get_height()
+    totx = toty = count = 0
+    for y in range(h):
+        for x in range(w):
+            r, g, b, *rest = img.get_at((x, y))
+            # blue if b is notably higher than r and g and has decent intensity
+            if b > max(r, g) + 30 and b > 80:
+                totx += x; toty += y; count += 1
+    if count == 0:
+        return None
+    return (totx / count, toty / count)
+
+
+# Build a virtual collision map once: a grid (bytearray per row) where 1 means occupied
+def build_collision_grid(img):
+    w, h = img.get_width(), img.get_height()
+    grid = [bytearray(w) for _ in range(h)]
+    occupied = 0
+    for y in range(h):
+        row = grid[y]
+        for x in range(w):
+            r, g, b, *rest = img.get_at((x, y))
+            # treat strong green as spawn/empty, white as empty, blue marker as empty;
+            # everything else is collision
+            # ignore green spawn area
+            if g >= 200 and r < 100 and b < 100:
+                continue
+            # ignore white background
+            if (r, g, b) == (255, 255, 255):
+                continue
+            # ignore blue marker (B significantly larger than R/G and reasonably bright)
+            if b > max(r, g) + 30 and b > 80:
+                continue
+            row[x] = 1
+            occupied += 1
+    return grid, occupied
+
+
+# Build collision map once
+collision_grid, occupied_pixels = build_collision_grid(map_image)
+print(f"Collision grid built: {occupied_pixels} occupied pixels")
+
+# determine spawn from green area if present
+found = find_green_center(map_image)
+if found:
+    mx, my = found
+    SPAWN_POINT = (mx, my)
+else:
+    SPAWN_POINT = (200, 200)
+
+camera = Camera(SCREEN_W, SCREEN_H)
+player = Player(SPAWN_POINT, screen, camera)
+from World.Trafo import Trafo
+# optional joystick controller (provided in Player/Joystick.py)
+
+from Player.Joystick import Joystick as JoystickController
+
+# Hardcore mode: when True, death is blocking and player cannot move until respawn.
+# When False, death shows an overlay but player can still move; if the player
+# exits the collision area the death state is cleared.
+hardcore_mode = False
+
+# control mode for input: 'keyboard' or 'joystick'
+control_mode = 'keyboard'
+
 # Instantiate a SidePanel on the right and populate with default screens
 # Instantiate a compact bottom-left UI manager if available, else fall back to SidePanel
 if UIManager is not None:
@@ -356,6 +331,36 @@ else:
     panel_h = SCREEN_H
     panel_w = PANEL_WIDTH
     ui = SidePanel(panel_x, panel_y, panel_w, panel_h, layout='horizontal')
+
+
+joystick_controller = JoystickController(ui)
+# prefer explicit availability flag from the adapter
+try:
+    joystick_available = bool(getattr(joystick_controller, 'available', False))
+except Exception:
+    joystick_available = False
+# last printed control mode to avoid repeated logs
+last_printed_control_mode = control_mode
+
+# spawn a trafo at blue marker if present, otherwise use a fallback near player
+blue_found = find_blue_center(map_image)
+if blue_found:
+    bx, by = blue_found
+    trafo = Trafo(bx, by, size=60)
+    # remember initial trafo spawn so we can reset it on player death
+    trafo.initial_pos = (bx, by)
+else:
+    try:
+        trafo = Trafo(SPAWN_POINT[0] + 120, SPAWN_POINT[1], size=60)
+        trafo.initial_pos = (SPAWN_POINT[0] + 120, SPAWN_POINT[1])
+    except Exception:
+        trafo = Trafo(SPAWN_POINT[0] + 120 if isinstance(SPAWN_POINT, tuple) else 300, SPAWN_POINT[1] if isinstance(SPAWN_POINT, tuple) else 200, size=60)
+        try:
+            trafo.initial_pos = (SPAWN_POINT[0] + 120 if isinstance(SPAWN_POINT, tuple) else 300, SPAWN_POINT[1] if isinstance(SPAWN_POINT, tuple) else 200)
+        except Exception:
+            trafo.initial_pos = (300, 200)
+
+
 
 def _toggle_hardcore():
     global hardcore_mode

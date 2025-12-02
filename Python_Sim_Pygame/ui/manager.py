@@ -6,7 +6,7 @@ class UIManager:
     """Simple UI manager for bottom-left panel.
     Keeps screens modular; exposes navigation API compatible with previous code.
     """
-    def __init__(self, screen, panel_rect=None, font=None, player=None, image_only=True, default_image_id='0C'):
+    def __init__(self, screen, panel_rect=None, font=None, player=None, image_only=True, default_image_id='01'):
         self.screen = screen
         self.font = font or pygame.font.SysFont(None, 28)
         self.screens = []

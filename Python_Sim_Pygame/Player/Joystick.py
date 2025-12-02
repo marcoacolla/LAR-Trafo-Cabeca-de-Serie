@@ -124,44 +124,22 @@ class Joystick:
                             self.currentSpeed = selectedSpeed
                             self.hasChangedSpeed = True
                 elif msg.arbitration_id == self.CAN_CHANNEL_IMAGE_ID:
-                    # image id expected as ASCII text like b'0C' or b'0C\x00'
-                    try:
-                        # strip trailing nulls and whitespace
-                        sid = data.rstrip(b"\x00\r\n ")
-                        # try decode as ascii/utf-8
-                        try:
-                            id_str = sid.decode('ascii')
-                        except Exception:
-                            try:
-                                id_str = sid.decode('utf-8', errors='ignore')
-                            except Exception:
-                                id_str = None
-                        if id_str:
-                            # normalize: uppercase and strip
-                            id_str = id_str.strip().upper()
-                            if id_str != self._last_image_id:
-                                self._last_image_id = id_str
-                                # inform ui_manager if available
-                                try:
-                                    if self.ui_manager is not None:
-                                        # prefer a set_image_id method
-                                        if hasattr(self.ui_manager, 'set_image_id'):
-                                            self.ui_manager.set_image_id(id_str)
-                                        else:
-                                            # if ui_manager is a callable, call it
-                                            if callable(self.ui_manager):
-                                                try:
-                                                    self.ui_manager(id_str)
-                                                except Exception:
-                                                    pass
-                                except Exception:
-                                    pass
-                    except Exception:
-                        pass
-            except Exception:
-                # ignore malformed messages
-                continue
+                    # Converte os bytes do CAN diretamente para string hex (maiúscula)
+                    id_str = data.hex().upper()
+                    #print(id_str)
+                    if id_str != self._last_image_id:
+                        self._last_image_id = id_str
 
+                        if self.ui_manager is not None:
+                            # Se tiver método específico, usa ele
+                            if hasattr(self.ui_manager, 'set_image_id'):
+                                #print("ALO")
+                                self.ui_manager.set_image_id(id_str)
+                            # Se for chamável, chama
+                            elif callable(self.ui_manager):
+                                self.ui_manager(id_str)
+            except Exception:
+                pass
     def getJoystickValues(self):
         # return left_x, left_y, right_x, right_y
         return self.eixo_esquerdo_x, self.eixo_esquerdo_y, self.eixo_direito_x, self.eixo_direito_y
