@@ -345,11 +345,9 @@ class Player:
             WHEEL_TURN_STEP = 5.0  # degrees per tick when holding A/D
             if keys[pygame.K_a]:
                 for w in self.wheels:
-                    print("Steering wheel", w.name, "to heading", (w.getHeading() - WHEEL_TURN_STEP) % 360)
                     w.setHeading((w.getHeading() - WHEEL_TURN_STEP) % 360)
             if keys[pygame.K_d]:
                 for w in self.wheels:
-                    print("Steering wheel", w.name, "to heading", (w.getHeading() - WHEEL_TURN_STEP) % 360)
                     w.setHeading((w.getHeading() + WHEEL_TURN_STEP) % 360)
             if keys[pygame.K_w]:
                 self.makeMovement("forward", step=speed)
@@ -622,7 +620,7 @@ class Player:
         if prev_mode == 'straight' and new_mode == 'curve':
             # set logical mode
             self.curve_mode = new_mode
-            print("Immediate straight->curve mode switch")
+            # debug print removed
             # compute ICR and immediately apply wheel steering for curve
             self.icr_global = self.curvature.computeICR(angle_offset=self.angle_offset)
             try:
@@ -650,7 +648,7 @@ class Player:
 
         # finally update the logical mode state now (so UI shows it)
         self.curve_mode = new_mode
-        print(self.icr_global  )
+        # debug print removed
         # compute global ICR for modes that need it
         if self.curve_mode in ["curve", "pivotal"]:
             self.icr_global = self.curvature.computeICR(angle_offset=self.angle_offset)
@@ -706,7 +704,7 @@ class Player:
 
                 desired = cand1 if dot1 > dot2 else cand2
                 wheel.setHeading(desired)
-                print("Steering wheel", wheel.name, "to heading", desired)
+                # debug print removed
 
     def update_transition(self):
         """Call regularly (each frame) to progress an ongoing mode-change transition.
@@ -1006,6 +1004,15 @@ class Player:
             if invert:
                 dx = -dx
                 dy = -dy
+
+            # Ensure combined X/Y components do not exceed the requested
+            # linear `step`. Scale the vector (dx,dy) so that its magnitude
+            # equals `step` (Pythagorean normalization).
+            mag = math.hypot(dx, dy)
+            if mag > 1e-6:
+                scale = float(step) / mag
+                dx *= scale
+                dy *= scale
 
             self.setPosition((self.x + dx, self.y + dy))
 

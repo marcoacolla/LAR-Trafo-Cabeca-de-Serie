@@ -96,10 +96,8 @@ class SidePanel:
         try:
             if callable(cb):
                 cb()
-            else:
-                print(f"Selected: {label}")
         except Exception:
-            print(f"Error running callback for: {label}")
+            pass
 
     def _opts(self):
         if not self.screens:
@@ -339,7 +337,7 @@ def toggle_fullscreen():
         except Exception:
             pass
 
-        print(f"Fullscreen: {is_fullscreen}")
+        # debug print removed
     except Exception:
         pass
 
@@ -412,7 +410,7 @@ def build_collision_grid(img):
 
 # Build collision map once
 collision_grid, occupied_pixels = build_collision_grid(map_image)
-print(f"Collision grid built: {occupied_pixels} occupied pixels")
+# debug print removed
 
 # determine spawn from green area if present
 found = find_green_center(map_image)
@@ -491,12 +489,17 @@ else:
         except Exception:
             trafo.initial_pos = (300, 200)
 
+        # Timestamp (ms) when trafo was last picked up; used to display a HUD indicator.
+        trafo_pickup_time = 0
+        # How long (ms) to show the pickup indicator
+        TRAFO_PICKUP_DISPLAY_MS = 1500
+
 
 
 def _toggle_hardcore():
     global hardcore_mode
     hardcore_mode = not hardcore_mode
-    print(f"Hardcore mode set to: {hardcore_mode}")
+    # debug print removed
 
 def _reset_trafo():
     try:
@@ -506,7 +509,7 @@ def _reset_trafo():
             trafo.y = iy
             trafo.picked = False
             trafo.carrier = None
-            print('Trafo reset to initial position')
+            # debug print removed
     except Exception:
         pass
 
@@ -526,7 +529,7 @@ def goto_screen_by_title(title):
                 return
     except Exception:
         pass
-    print(f"Panel screen '{title}' not found")
+    # debug print removed
 
 ui.add_screen('Main', [
     (f'Mode: {getattr(player, "curve_mode", "unknown")}', None),
@@ -803,7 +806,7 @@ while running:
                     3: 'lenta'
                 }
                 new_speed = speed_map.get(sel)
-                print(new_speed)
+                # debug print removed
                 if new_speed:
                     try:
                         player.set_speed_mode(new_speed)
@@ -830,9 +833,6 @@ while running:
                 # try enable joystick only if controller reported available
                 if joystick_available:
                     control_mode = 'joystick'
-                else:
-                    # inform user but don't switch state
-                    print('Joystick not available; staying in KEYBOARD mode')
             else:
                 control_mode = 'keyboard'
         # speed mode shortcuts: 1 = rápida (100%), 2 = média (60%), 3 = lenta (30%)
@@ -923,12 +923,12 @@ while running:
                 except Exception as e:
                     # if joystick access fails at runtime, fall back to keyboard
                     control_mode = 'keyboard'
-                    print(f'Joystick error: reverting to KEYBOARD control({e})')
+                    # debug print removed
                     player.move(keys, speed=move_speed)
             else:
                 # joystick not available at runtime; fall back
                 control_mode = 'keyboard'
-                print('Joystick not available at runtime; switching to KEYBOARD')
+                # debug print removed
                 player.move(keys, speed=move_speed)
         else:
             player.move(keys, speed=move_speed)
@@ -1182,7 +1182,10 @@ while running:
                 except Exception:
                     picked = False
                 if picked:
-                    print('Trafo picked up!')
+                    try:
+                        trafo_pickup_time = pygame.time.get_ticks()
+                    except Exception:
+                        pass
     except Exception:
         pass
 
@@ -1211,14 +1214,45 @@ while running:
             screen.blit(hud_text, (8, 8))
             # print control mode change only once to avoid log spam
             if control_mode != last_printed_control_mode:
-                print(f'Control mode: {control_mode.upper()}')
+                # debug print removed
                 last_printed_control_mode = control_mode
+        except Exception:
+            pass
+        # Persistent badge showing that trafo is currently carried (screen-anchored)
+        try:
+            if 'trafo' in globals() and getattr(trafo, 'picked', False):
+                badge_font = pygame.font.SysFont(None, 20)
+                badge_txt = badge_font.render('Trafo: CARRIED', True, (255, 255, 255))
+                bx, by = 8, 36
+                bg = pygame.Surface((badge_txt.get_width() + 12, badge_txt.get_height() + 8), pygame.SRCALPHA)
+                bg.fill((200, 40, 40, 200))
+                screen.blit(bg, (bx - 6, by - 4))
+                screen.blit(badge_txt, (bx, by))
         except Exception:
             pass
         # Delegate icamento UI drawing to Player
         try:
             if hasattr(player, 'draw_icamento_ui'):
                 player.draw_icamento_ui(screen)
+        except Exception:
+            pass
+        # Draw a transient indicator when trafo was recently picked up
+        try:
+            now_pick = pygame.time.get_ticks()
+            if 'trafo_pickup_time' in globals() and trafo_pickup_time and (now_pick - trafo_pickup_time) < TRAFO_PICKUP_DISPLAY_MS:
+                # Use a larger, more visible font and place the indicator
+                # just above the bottom-left HUD so it's easy to spot.
+                pick_font = pygame.font.SysFont(None, 28)
+                pick_txt = pick_font.render('Trafo picked up!', True, (40, 220, 40))
+                # position above the lower-left mode string
+                pad = 8
+                mode_y = screen.get_height() - font.get_height() - pad
+                py = mode_y - pick_txt.get_height() - 12
+                px = screen.get_width() // 2 - pick_txt.get_width() // 2
+                bg = pygame.Surface((pick_txt.get_width() + 20, pick_txt.get_height() + 12), pygame.SRCALPHA)
+                bg.fill((0, 0, 0, 180))
+                screen.blit(bg, (px - 10, py - 6))
+                screen.blit(pick_txt, (px, py))
         except Exception:
             pass
         # Restore original bottom-left mode display

@@ -22,7 +22,7 @@ class UIManager:
         if panel_rect is None:
             sw, sh = screen.get_width(), screen.get_height()
             self.panel_rect = pygame.Rect(8, 100, 260, 70)
-            print(f"[UIManager] Panel position: {self.panel_rect}")
+            # debug print removed
         else:
             self.panel_rect = pygame.Rect(panel_rect)
         # Image display settings: external system will send IDs like '0C' -> file 'img_0C.bmp'
@@ -222,10 +222,9 @@ class UIManager:
         try:
             if callable(cb):
                 cb()
-            else:
-                print(f"Selected: {label}")
+            
         except Exception as e:
-            print(f"Error running callback for {label}: {e}")
+            pass
 
     def _opts(self):
         if not self.screens:
@@ -374,7 +373,7 @@ class UIManager:
                         dir_list = os.listdir(self.image_dir)
                     except Exception:
                         dir_list = 'unreadable'
-                print(f"[UIManager] Failed to load image for id {key} from {fp}; exists={exists}; image_dir_exists={dir_exists}; image_dir_list={dir_list}")
+                # debug print removed
             except Exception:
                 pass
             return None
