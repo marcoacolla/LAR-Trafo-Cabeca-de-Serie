@@ -227,6 +227,40 @@ SCREEN_W = 800 + PANEL_WIDTH
 SCREEN_H = 600
 screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))  # largura x altura
 pygame.display.set_caption("Pygame Trafo Simulator")
+selected_map_path = None
+try:
+    # show start menu and collect initial options (runs its own small event loop)
+    from ui.menu_screen import run_start_menu
+    try:
+        from ui.screens.map_select_screen import run_map_select_menu
+    except Exception:
+        run_map_select_menu = None
+    import sys as _sys
+    _initial_cfg = {'hardcore': False, 'fullscreen': False}
+    _cfg_res, _action = run_start_menu(screen, _initial_cfg)
+    selected_map_path = None
+    # if menu requested map selection, loop until a map is chosen or user exits
+    while _action == 'map_select':
+        if run_map_select_menu is not None:
+            sel = run_map_select_menu(screen)
+        else:
+            sel = None
+        if sel:
+            selected_map_path = sel
+            break
+        # user canceled map selection -> show start menu again
+        _cfg_res, _action = run_start_menu(screen, _cfg_res)
+    if _action == 'exit':
+        pygame.quit()
+        _sys.exit(0)
+    # apply selected flags (will apply fullscreen later once camera exists)
+    hardcore_mode = bool(_cfg_res.get('hardcore', False))
+    start_menu_desired_fullscreen = bool(_cfg_res.get('fullscreen', False))
+except Exception:
+    # fallback defaults
+    hardcore_mode = False
+    start_menu_desired_fullscreen = False
+    selected_map_path = None
 # Fullscreen state tracking: windowed size and flag
 is_fullscreen = False
 _windowed_size = (SCREEN_W, SCREEN_H)
@@ -313,7 +347,10 @@ def toggle_fullscreen():
 
 
 # Carregar imagem do mapa
-map_path = os.path.join(os.path.dirname(__file__), 'World', 'Obstacles', 'Map1.png')
+if 'selected_map_path' in globals() and selected_map_path:
+    map_path = selected_map_path
+else:
+    map_path = os.path.join(os.path.dirname(__file__), 'World', 'Obstacles', 'Map1.png')
 map_image = pygame.image.load(map_path).convert()
 
 
@@ -387,6 +424,12 @@ else:
 
 camera = Camera(SCREEN_W, SCREEN_H)
 player = Player(SPAWN_POINT, screen, camera)
+# If startup menu requested fullscreen, apply it now (camera exists for toggle)
+try:
+    if start_menu_desired_fullscreen and not is_fullscreen:
+        toggle_fullscreen()
+except Exception:
+    pass
 from World.Trafo import Trafo
 # optional joystick controller (provided in Player/Joystick.py)
 
@@ -395,7 +438,7 @@ from Player.Joystick import Joystick as JoystickController
 # Hardcore mode: when True, death is blocking and player cannot move until respawn.
 # When False, death shows an overlay but player can still move; if the player
 # exits the collision area the death state is cleared.
-hardcore_mode = False
+# `hardcore_mode` is initialized from the start menu above (variable already set)
 
 # control mode for input: 'keyboard' or 'joystick'
 control_mode = 'keyboard'
@@ -403,13 +446,20 @@ control_mode = 'keyboard'
 # Instantiate a SidePanel on the right and populate with default screens
 # Instantiate a compact bottom-left UI manager if available, else fall back to SidePanel
 if UIManager is not None:
-    panel_rect = (8, SCREEN_H - 120, 320, 100)
+    # compute panel_rect using the actual surface size so the panel stays
+    # anchored to the bottom even when the window was toggled to fullscreen
+    try:
+        sw, sh = screen.get_size()
+        panel_rect = (8, sh - 120, 320, 100)
+    except Exception:
+        panel_rect = (8, SCREEN_H - 120, 320, 100)
     ui = UIManager(screen, panel_rect=panel_rect, player=player)
 else:
     # fallback: older SidePanel on the right
-    panel_x = SCREEN_W - PANEL_WIDTH
+    sw, sh = screen.get_size()
+    panel_x = sw - PANEL_WIDTH
     panel_y = 0
-    panel_h = SCREEN_H
+    panel_h = sh
     panel_w = PANEL_WIDTH
     ui = SidePanel(panel_x, panel_y, panel_w, panel_h, layout='horizontal')
 
