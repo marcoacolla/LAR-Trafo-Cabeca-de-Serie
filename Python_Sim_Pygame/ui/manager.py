@@ -410,9 +410,48 @@ class UIManager:
             pass
 
     def draw(self, surf=None, mode_text=None, warning=None):
-        self.panel_rect.y = 450
+        # ensure we have a surface reference early
         if surf is None:
             surf = self.screen
+
+        # compute surface width/height (prefer the passed surf)
+        try:
+            sw = surf.get_width()
+            sh = surf.get_height()
+        except Exception:
+            try:
+                sw = self.screen.get_width() if getattr(self, 'screen', None) else 0
+                sh = self.screen.get_height() if getattr(self, 'screen', None) else 0
+            except Exception:
+                sw = 0
+                sh = 0
+
+        # preserve/create a vertical ratio so the panel keeps the same relative
+        # vertical position when the window size changes (e.g. fullscreen)
+        try:
+            if not hasattr(self, '_panel_y_ratio') or self._panel_y_ratio is None:
+                # if panel_rect has an explicit y, use it to derive the ratio;
+                # otherwise fall back to a sensible default (75% down the screen)
+                if getattr(self, 'panel_rect', None) and sh:
+                    base_y = self.panel_rect.y
+                    self._panel_y_ratio = float(base_y) / float(sh)
+                else:
+                    self._panel_y_ratio = 0.75
+        except Exception:
+            self._panel_y_ratio = 0.75
+
+        # apply the ratio to compute current y (keeps same relative position in fullscreen)
+        try:
+            if sh:
+                self.panel_rect.y = int(sh * self._panel_y_ratio)
+        except Exception:
+            pass
+
+        # center panel horizontally on the current surface so images are centered
+        try:
+            self.panel_rect.x = (sw - self.panel_rect.width) // 2
+        except Exception:
+            pass
         # If we're in image-only mode, either draw the current image (scaled)
         # or draw a visible placeholder and skip legacy UI drawing.
         if self.image_only:

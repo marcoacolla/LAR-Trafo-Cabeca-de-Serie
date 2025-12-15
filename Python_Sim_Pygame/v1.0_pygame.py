@@ -227,6 +227,87 @@ SCREEN_W = 800 + PANEL_WIDTH
 SCREEN_H = 600
 screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))  # largura x altura
 pygame.display.set_caption("Pygame Trafo Simulator")
+# Fullscreen state tracking: windowed size and flag
+is_fullscreen = False
+_windowed_size = (SCREEN_W, SCREEN_H)
+
+def toggle_fullscreen():
+    """Toggle fullscreen (F11 or Alt+Enter). Updates `screen`, `camera`, and `ui` where possible."""
+    global is_fullscreen, screen, camera, _windowed_size
+    try:
+        # remember previous screen size to compute offsets
+        try:
+            old_w, old_h = screen.get_width(), screen.get_height()
+        except Exception:
+            old_w, old_h = _windowed_size
+
+        is_fullscreen = not is_fullscreen
+        if is_fullscreen:
+            # store the current windowed size so we can restore later
+            try:
+                _windowed_size = (old_w, old_h)
+            except Exception:
+                pass
+            screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+        else:
+            screen = pygame.display.set_mode(_windowed_size)
+
+        # Update camera dimensions so centering/scale continue to work
+        try:
+            camera.width = screen.get_width()
+            camera.height = screen.get_height()
+        except Exception:
+            pass
+
+        # Update UI manager or SidePanel to adapt to new screen size if present
+        try:
+            ui_obj = globals().get('ui')
+            if ui_obj is not None:
+                new_w, new_h = screen.get_width(), screen.get_height()
+                # UIManager: preserve position relative to screen using proportional mapping
+                try:
+                    if hasattr(ui_obj, 'panel_rect'):
+                        pr = ui_obj.panel_rect
+                        # compute previous position ratios relative to old screen
+                        try:
+                            rx = pr.x / float(old_w) if old_w > 0 else 0.0
+                            ry = pr.y / float(old_h) if old_h > 0 else 0.0
+                        except Exception:
+                            rx = 0.02
+                            ry = 0.75
+                        # map to new screen keeping same pixel size
+                        pr.x = int(max(0, min(new_w - pr.width, round(rx * new_w))))
+                        pr.y = int(max(0, min(new_h - pr.height, round(ry * new_h))))
+                        ui_obj.panel_rect = pr
+                    if hasattr(ui_obj, 'screen'):
+                        ui_obj.screen = screen
+                except Exception:
+                    pass
+
+                # SidePanel: preserve relative position as well (not always anchored)
+                try:
+                    if hasattr(ui_obj, 'rect'):
+                        r = ui_obj.rect
+                        try:
+                            rx = r.x / float(old_w) if old_w > 0 else 1.0
+                            ry = r.y / float(old_h) if old_h > 0 else 0.0
+                        except Exception:
+                            rx = 1.0
+                            ry = 0.0
+                        r.x = int(max(0, min(new_w - r.width, round(rx * new_w))))
+                        r.y = int(max(0, min(new_h - r.height, round(ry * new_h))))
+                        # if panel height was intended to span full height, preserve that
+                        if r.height != new_h and (abs(r.height - old_h) < 8):
+                            r.height = new_h
+                        ui_obj.rect = r
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        print(f"Fullscreen: {is_fullscreen}")
+    except Exception:
+        pass
 
 
 
@@ -587,6 +668,27 @@ while running:
                 pass
     except Exception:
         # ignore event polling issues to preserve existing behavior
+        pass
+    # Process keydown events for actions that are better handled as discrete events
+    try:
+        for ev in pygame.event.get([pygame.KEYDOWN]):
+            try:
+                # F11 toggles fullscreen
+                if ev.key == pygame.K_F11:
+                    toggle_fullscreen()
+                # Alt+Enter also toggles fullscreen on many platforms
+                if ev.key == pygame.K_RETURN and (ev.mod & pygame.KMOD_ALT):
+                    toggle_fullscreen()
+                # forward KEYDOWN to UI manager if it can accept event objects
+                if globals().get('ui') is not None and hasattr(globals().get('ui'), 'process_key_event'):
+                    # keep compatibility: process_key_event expects a key constant
+                    try:
+                        globals().get('ui').process_key_event(ev.key)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+    except Exception:
         pass
     # poll CAN joystick (if present) to update its internal state
     try:
