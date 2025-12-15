@@ -94,6 +94,34 @@ class Player:
 
     def getHeading(self):
         return self.heading  # Se quiser, pode adicionar rotação do player
+
+    def _interpret_heading(self, heading):
+        """Interpret wheel heading according to physical steering limits.
+        Map headings in the forbidden sector (190,350) to their 180°-rotated
+        equivalent, matching `Wheel.setHeading` behavior.
+        """
+        try:
+            base = float(self.getHeading())
+        except Exception:
+            base = 0.0
+
+        h_world = float(heading) % 360
+        rel = (h_world - base) % 360
+
+        # flip headings strictly inside the forbidden sector (relative)
+        if 190 < rel < 350:
+            rel = (rel - 180) % 360
+
+        # map >=350 to small negative relative angles (350 -> -10)
+        if rel >= 350:
+            rel = rel - 360
+
+        # normalize relative into (-180,180]
+        if rel > 180:
+            rel = rel - 360
+
+        # return world heading normalized 0..360 (so callers get a usable world angle)
+        return (base + rel) % 360
     
     def normalize_joystick(self,lx, ly):
         """
@@ -297,10 +325,17 @@ class Player:
                     
             if isChangingCourse:
                 self.icr_global = self.curvature.computeICR(angle_offset=self.angle_offset)
-                # atualiza imediatamente o steering das rodas para refletir a
-                # nova curvatura mesmo sem movimento
+                # Atualiza o steering apenas quando estamos em modos que usam curvatura.
+                # Se mudamos para 'straight' aqui (por exceder limites), não forçamos
+                # uma atualização imediata que poderia causar uma rotação brutal
+                # num frame — deixamos a transição cuidar da interpolação.
                 try:
-                    self.steerWheels("curve", angle_offset=self.angle_offset, icr_bias=self.icr_bias)
+                    if self.curve_mode in ("curve", "pivotal"):
+                        self.steerWheels("curve", angle_offset=self.angle_offset, icr_bias=self.icr_bias)
+                    elif self.curve_mode == "straight":
+                        # If not transitioning, align wheels immediately; otherwise skip
+                        if not self.is_transitioning:
+                            self.steerWheels("straight")
                 except Exception:
                     pass
                 isChangingCourse = False
@@ -310,9 +345,11 @@ class Player:
             WHEEL_TURN_STEP = 5.0  # degrees per tick when holding A/D
             if keys[pygame.K_a]:
                 for w in self.wheels:
+                    print("Steering wheel", w.name, "to heading", (w.getHeading() - WHEEL_TURN_STEP) % 360)
                     w.setHeading((w.getHeading() - WHEEL_TURN_STEP) % 360)
             if keys[pygame.K_d]:
                 for w in self.wheels:
+                    print("Steering wheel", w.name, "to heading", (w.getHeading() - WHEEL_TURN_STEP) % 360)
                     w.setHeading((w.getHeading() + WHEEL_TURN_STEP) % 360)
             if keys[pygame.K_w]:
                 self.makeMovement("forward", step=speed)
@@ -568,6 +605,19 @@ class Player:
             self.curve_mode = prev_temp_mode
             self.icr_global = prev_icr
 
+        # Normalize destination angles to match wheel interpretation so
+        # interpolation uses consistent shortest-path math. Skip normalization
+        # when the target mode is `diagonal` because diagonal allows full
+        # 360° wheel rotation.
+        try:
+            if new_mode == 'diagonal':
+                # keep raw destination headings for diagonal mode
+                pass
+            else:
+                to_angles = [self._interpret_heading(a) for a in to_angles]
+        except Exception:
+            to_angles = to_angles
+
         # If switching straight -> curve, perform immediate switch (no transition)
         if prev_mode == 'straight' and new_mode == 'curve':
             # set logical mode
@@ -590,6 +640,13 @@ class Player:
         self.transition_start_ms = pygame.time.get_ticks()
         self.transition_from_angles = from_angles
         self.transition_to_angles = to_angles
+        # store base heading at transition start so we can interpolate
+        # wheel headings relative to the vehicle orientation. This avoids
+        # large absolute jumps when the vehicle is rotated.
+        try:
+            self.transition_base_heading = self.getHeading()
+        except Exception:
+            self.transition_base_heading = 0.0
 
         # finally update the logical mode state now (so UI shows it)
         self.curve_mode = new_mode
@@ -622,6 +679,7 @@ class Player:
         elif curve_mode == "diagonal":
             for w in self.wheels:
                 w.setHeading(diagonal_angle)
+                
 
         elif curve_mode == "curve" or curve_mode == "pivotal" :
             #icr = self.curvature.computeICR(angle_offset=angle_offset)
@@ -648,6 +706,7 @@ class Player:
 
                 desired = cand1 if dot1 > dot2 else cand2
                 wheel.setHeading(desired)
+                print("Steering wheel", wheel.name, "to heading", desired)
 
     def update_transition(self):
         """Call regularly (each frame) to progress an ongoing mode-change transition.
@@ -660,14 +719,52 @@ class Player:
         elapsed = now - (self.transition_start_ms or now)
         t = min(1.0, float(elapsed) / float(self.transition_duration_ms))
 
-        # simple shortest-angle interpolation for each wheel
+        # interpolate per-wheel, but do it in vehicle-local space so that
+        # transitions are stable regardless of the vehicle absolute heading.
+        base_h = getattr(self, 'transition_base_heading', self.getHeading())
+
+        def locally(a_world):
+            # convert world angle to [0,360) local relative to base_h
+            return (float(a_world) - float(base_h)) % 360
+
+        def crosses_forbidden(a_start, a_end):
+            # check a few points along the arc from a_start to a_end (in local 0..360)
+            # and see if any fall inside the forbidden sector (190..350).
+            # We'll test at quartiles (including midpoint) which is sufficient
+            # for avoiding the large forbidden sector.
+            samples = [0.25, 0.5, 0.75]
+            # compute shortest delta direction in local coords
+            d = ((a_end - a_start + 180) % 360) - 180
+            for s in samples:
+                mid = (a_start + d * s) % 360
+                if 190 < mid < 350:
+                    return True
+            return False
+
         for i, wheel in enumerate(self.wheels):
-            a0 = self.transition_from_angles[i] % 360
-            a1 = self.transition_to_angles[i] % 360
-            # compute shortest delta
-            delta = (a1 - a0 + 180) % 360 - 180
-            interp = (a0 + delta * t) % 360
-            wheel.setHeading(interp)
+            raw_a0 = float(self.transition_from_angles[i]) % 360
+            raw_a1 = float(self.transition_to_angles[i]) % 360
+
+            a0_local = locally(raw_a0)
+            a1_local = locally(raw_a1)
+
+            # prefer shortest path, but if that path crosses forbidden sector
+            # (190..350 in local coords) pick the alternate path that stays
+            # within allowed angles by adding/subtracting 360 to a1_local.
+            d_short = ((a1_local - a0_local + 180) % 360) - 180
+            # test shortest-path for forbidden crossing
+            if crosses_forbidden(a0_local, a0_local + d_short):
+                # try alternate longer path in other direction
+                if d_short > 0:
+                    d = d_short - 360
+                else:
+                    d = d_short + 360
+            else:
+                d = d_short
+
+            interp_local = (a0_local + d * t) % 360
+            interp_world = (base_h + interp_local) % 360
+            wheel.setHeading(interp_world)
 
         # At halfway (or end) ensure wheel positions are synced
         for wheel in self.wheels:
@@ -889,8 +986,14 @@ class Player:
             # movement direction should follow the wheel visual tangent used in Curvature.update
             # Curvature draws wheel heading tangent as angle_to_icr + 90, so the movement direction
             # corresponds to wheel_heading - 90 degrees (to align with screen/world conventions used)
-            wheel_heading = self.wheels[0].getHeading()
+            wheel = self.wheels[0]
+            wheel_heading = wheel.getHeading()
             heading_rad = math.radians(wheel_heading - 90)
+
+            # If the wheel was flipped by 180° due to steering limits,
+            # the effective movement direction is inverted.
+            invert = getattr(wheel, 'should_reverse', False)
+
             if direction == "forward":
                 dx = step * math.sin(heading_rad)
                 dy = -step * math.cos(heading_rad)
@@ -899,6 +1002,11 @@ class Player:
                 dy = step * math.cos(heading_rad)
             else:
                 dx = dy = 0
+
+            if invert:
+                dx = -dx
+                dy = -dy
+
             self.setPosition((self.x + dx, self.y + dy))
 
         # Movimento curvo ou pivotal
@@ -1011,10 +1119,10 @@ class Player:
 
             # Mostra valor percentual ao lado da barra (apenas se ativo)
             try:
-                    percent = int(self.icamento_cursor * 100)
+                    percent = int(self.icamento_cursor * 500)
                     f = pygame.font.SysFont(None, 22)
                     color = (40, 200, 40) if active else (120, 120, 120)
-                    txt = f.render(f'{percent}%', True, color)
+                    txt = f.render(f'{percent} mm', True, color)
                     tx = bar_x - txt.get_width() - 12
                     ty = bar_y + bar_h - txt.get_height() + 16
                     screen.blit(txt, (tx, ty))
