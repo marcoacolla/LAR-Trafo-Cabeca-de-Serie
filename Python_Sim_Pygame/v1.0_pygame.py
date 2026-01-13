@@ -392,19 +392,11 @@ def build_collision_grid(img):
         row = grid[y]
         for x in range(w):
             r, g, b, *rest = img.get_at((x, y))
-            # treat strong green as spawn/empty, white as empty, blue marker as empty;
-            # everything else is collision
-            # ignore green spawn area
-            if g >= 200 and r < 100 and b < 100:
-                continue
-            # ignore white background
-            if (r, g, b) == (255, 255, 255):
-                continue
-            # ignore blue marker (B significantly larger than R/G and reasonably bright)
-            if b > max(r, g) + 30 and b > 80:
-                continue
-            row[x] = 1
-            occupied += 1
+            # Only treat BLACK as collision/death
+            # Everything else (green spawn, white, gray path, blue marker) is safe
+            if r < 50 and g < 50 and b < 50:  # Black pixels cause death
+                row[x] = 1
+                occupied += 1
     return grid, occupied
 
 
@@ -475,15 +467,15 @@ last_printed_control_mode = control_mode
 blue_found = find_blue_center(map_image)
 if blue_found:
     bx, by = blue_found
-    trafo = Trafo(bx, by, size=60)
+    trafo = Trafo(bx, by, size=60, image_path='trafo_image/trafo.png')
     # remember initial trafo spawn so we can reset it on player death
     trafo.initial_pos = (bx, by)
 else:
     try:
-        trafo = Trafo(SPAWN_POINT[0] + 120, SPAWN_POINT[1], size=60)
+        trafo = Trafo(SPAWN_POINT[0] + 120, SPAWN_POINT[1], size=60, image_path='trafo_image/trafo.png')
         trafo.initial_pos = (SPAWN_POINT[0] + 120, SPAWN_POINT[1])
     except Exception:
-        trafo = Trafo(SPAWN_POINT[0] + 120 if isinstance(SPAWN_POINT, tuple) else 300, SPAWN_POINT[1] if isinstance(SPAWN_POINT, tuple) else 200, size=60)
+        trafo = Trafo(SPAWN_POINT[0] + 120 if isinstance(SPAWN_POINT, tuple) else 300, SPAWN_POINT[1] if isinstance(SPAWN_POINT, tuple) else 200, size=60, image_path='trafo_image/trafo.png')
         try:
             trafo.initial_pos = (SPAWN_POINT[0] + 120 if isinstance(SPAWN_POINT, tuple) else 300, SPAWN_POINT[1] if isinstance(SPAWN_POINT, tuple) else 200)
         except Exception:

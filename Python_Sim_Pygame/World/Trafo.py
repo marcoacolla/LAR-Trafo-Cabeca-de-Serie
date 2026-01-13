@@ -1,5 +1,6 @@
 import pygame
 import math
+import os
 
 
 class Trafo:
@@ -7,7 +8,7 @@ class Trafo:
     inside the player's hitbox. Stores a carrier reference when picked.
     Coordinates are in world units (same as player)."""
 
-    def __init__(self, x, y, size=60, color=(150, 80, 10)):
+    def __init__(self, x, y, size=60, color=(150, 80, 10), image_path=None, image_scale=2):
         self.x = x
         self.y = y
         self.size = size
@@ -19,6 +20,37 @@ class Trafo:
         # A small positive value (e.g. 0.2) makes the hitbox smaller than the
         # drawn square so collisions feel tighter and match the sprite.
         self.collision_shrink = 0.2
+        
+        # image_scale: multiplicador para o tamanho da imagem (1.0 = tamanho original, 1.5 = 50% maior, etc)
+        self.image_scale = image_scale
+        
+        # Load image if provided
+        self.image = None
+        self.image_scaled = None
+        if image_path:
+            self._load_image(image_path)
+    
+    def _load_image(self, image_path):
+        """Load and scale the PNG image for the trafo."""
+        try:
+            # If relative path, make it relative to the World folder
+            if not os.path.isabs(image_path):
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                image_path = os.path.join(current_dir, image_path)
+            
+            if os.path.exists(image_path):
+                self.image = pygame.image.load(image_path).convert_alpha()
+                self._scale_image()
+            else:
+                print(f"Warning: Image file not found: {image_path}")
+        except Exception as e:
+            print(f"Error loading image: {e}")
+
+    def _scale_image(self):
+        """Scale the image to match the size attribute multiplied by image_scale."""
+        if self.image:
+            scaled_size = int(self.size * self.image_scale)
+            self.image_scaled = pygame.transform.scale(self.image, (scaled_size, scaled_size))
 
     def get_rect(self):
         half = self.size / 2
@@ -59,7 +91,7 @@ class Trafo:
                     pass
 
     def draw(self, surface, camera_or_offset=(0, 0)):
-        # draw square in world coordinates; camera_or_offset may be Camera or (x,y)
+        # draw image or square in world coordinates; camera_or_offset may be Camera or (x,y)
         if hasattr(camera_or_offset, 'world_to_screen'):
             sx, sy = camera_or_offset.world_to_screen((self.x, self.y))
         else:
@@ -67,9 +99,16 @@ class Trafo:
             sx, sy = (self.x - camx, self.y - camy)
 
         half = max(1, int(round(self.size / 2)))
-        rect = pygame.Rect(int(sx - half), int(sy - half), half * 2, half * 2)
-        pygame.draw.rect(surface, self.color, rect)
-        pygame.draw.rect(surface, (0,0,0), rect, 1)
+        
+        if self.image_scaled:
+            # Draw the scaled image centered at the position
+            rect = self.image_scaled.get_rect(center=(int(sx), int(sy)))
+            surface.blit(self.image_scaled, rect)
+        else:
+            # Fallback to drawing a square if no image is loaded
+            rect = pygame.Rect(int(sx - half), int(sy - half), half * 2, half * 2)
+            pygame.draw.rect(surface, self.color, rect)
+            pygame.draw.rect(surface, (0,0,0), rect, 1)
 
     def pick(self, player):
         self.picked = True
