@@ -497,6 +497,83 @@ else:
 #   - The can_movement_value replaces the left joystick Y-axis (forward/backward)
 can_movement_value = 0  # 0 to 60000
 
+# ==================== ACELERÔMETRO / INCLINAÇÃO ====================
+# Simula o acelerômetro baseado em tons vermelhos do mapa
+# 0 = reto, 6000 = 90 graus de inclinação
+# Configurações editáveis
+ACCELEROMETER_MAX_VALUE = 6000  # máximo valor do acelerômetro (simula 90 graus)
+ACCELEROMETER_RED_MIN_DIFF = 80  # diferença mínima entre R e max(G,B) para detectar vermelho
+ACCELEROMETER_GB_MAX_DIFF = 30   # diferença máxima entre G e B (para G e B serem "iguais")
+ACCELEROMETER_SAMPLES = 4  # número de pontos ao redor do robô para amostrar (4 cantos da base)
+
+def calculate_accelerometer_value():
+    """
+    Calcula o valor do acelerômetro baseado na intensidade de vermelho puro
+    na posição do robô. Detecta especificamente tons avermelhados (R >> G, B)
+    e não branco ou outras cores. Retorna um valor de 0 a ACCELEROMETER_MAX_VALUE.
+    """
+    try:
+        px, py = player.getPosition()
+        map_x = int(px)
+        map_y = int(py)
+        
+        # Verifica limites do mapa
+        if (map_x < 0 or map_x >= map_image.get_width() or 
+            map_y < 0 or map_y >= map_image.get_height()):
+            return 0
+        
+        # Amostra a cor central e em alguns pontos ao redor
+        sample_points = [
+            (map_x, map_y),  # centro
+            (map_x + 15, map_y),  # direita
+            (map_x - 15, map_y),  # esquerda
+            (map_x, map_y + 15),  # frente
+            (map_x, map_y - 15),  # trás
+        ]
+        
+        # Coleta valores de "avermelhamento" de todas as amostras
+        red_intensities = []
+        for sx, sy in sample_points:
+            if 0 <= sx < map_image.get_width() and 0 <= sy < map_image.get_height():
+                try:
+                    color = map_image.get_at((sx, sy))
+                    r, g, b = color[0], color[1], color[2]
+                    
+                    # Detecta vermelho: R deve ser muito maior que G e B
+                    # G e B devem ser aproximadamente iguais (para evitar cores misturadas)
+                    max_gb = max(g, b)
+                    diff_gb = abs(g - b)
+                    
+                    # Calcula quanto de "puro vermelho" existe
+                    # Quanto maior R - max(G,B), mais vermelho puro é
+                    red_diff = r - max_gb
+                    
+                    # Só conta como vermelho se atender aos critérios
+                    if red_diff >= ACCELEROMETER_RED_MIN_DIFF and diff_gb <= ACCELEROMETER_GB_MAX_DIFF:
+                        red_intensities.append(red_diff)
+                    else:
+                        red_intensities.append(0)
+                except Exception:
+                    pass
+        
+        if not red_intensities or all(x == 0 for x in red_intensities):
+            return 0
+        
+        # Usa a média dos valores de "avermelhamento"
+        avg_red_intensity = sum(red_intensities) / len(red_intensities)
+        
+        # Mapeia de [0, 255] para [0, ACCELEROMETER_MAX_VALUE]
+        # A intensidade máxima é quando R=255 e G=B=0, dando red_diff=255
+        normalized = min(1.0, avg_red_intensity / 255.0)
+        accel_value = int(normalized * ACCELEROMETER_MAX_VALUE)
+        
+        return min(ACCELEROMETER_MAX_VALUE, max(0, accel_value))
+    except Exception:
+        return 0
+
+# Variável global para armazenar o valor atual do acelerômetro
+current_accelerometer_value = 0
+
 def _toggle_hardcore():
     global hardcore_mode
     hardcore_mode = not hardcore_mode
@@ -980,6 +1057,12 @@ while running:
     except Exception:
         player.move(keys, speed=move_speed)
 
+    # Atualiza acelerômetro (valor simulado baseado em tons vermelhos do mapa)
+    try:
+        current_accelerometer_value = calculate_accelerometer_value()
+    except Exception:
+        current_accelerometer_value = 0
+
     # Atualiza câmera antes de desenhar (offset/scale)
     camera.update(player)
 
@@ -1263,6 +1346,14 @@ while running:
                 last_printed_control_mode = control_mode
         except Exception:
             pass
+        
+        # Display accelerometer value (simulated inclination based on red areas)
+        try:
+            accel_text = font.render(f'Acelerômetro: {current_accelerometer_value} / {ACCELEROMETER_MAX_VALUE}', True, (255, 100, 100))
+            screen.blit(accel_text, (8, 32))
+        except Exception:
+            pass
+        
         # Persistent badge showing that trafo is currently carried (screen-anchored)
         try:
             if 'trafo' in globals() and getattr(trafo, 'picked', False):
