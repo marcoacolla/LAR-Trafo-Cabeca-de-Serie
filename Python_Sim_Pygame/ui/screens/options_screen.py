@@ -2,9 +2,9 @@ import pygame
 
 def run_options_menu(screen, initial_config=None):
     """Simple options menu returning updated config dict.
-    initial_config: dict with keys 'hardcore' (bool) and 'fullscreen' (bool)
+    initial_config: dict with keys 'hardcore' (bool), 'fullscreen' (bool), and 'joystick_leading' (bool)
     """
-    cfg = {'hardcore': False, 'fullscreen': False}
+    cfg = {'hardcore': False, 'fullscreen': False, 'joystick_leading': True}
     if initial_config:
         cfg.update(initial_config)
 
@@ -12,14 +12,14 @@ def run_options_menu(screen, initial_config=None):
     font = pygame.font.SysFont(None, 36)
     running = True
     selected = 0
-    options = ['Modo Hardcore', 'Tela Cheia', 'Voltar']
+    options = ['Modo Hardcore', 'Tela Cheia', 'Joystick Leading', 'Voltar']
     while running:
         dt = clock.tick(60)
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
                 return cfg
             if ev.type == pygame.KEYDOWN:
-                if ev.key in (pygame.K_ESCAPE, pygame.K_RETURN) and selected == 2:
+                if ev.key in (pygame.K_ESCAPE, pygame.K_RETURN) and selected == 3:
                     return cfg
                 if ev.key == pygame.K_UP:
                     selected = (selected - 1) % len(options)
@@ -31,6 +31,8 @@ def run_options_menu(screen, initial_config=None):
                     elif selected == 1:
                         cfg['fullscreen'] = not cfg['fullscreen']
                     elif selected == 2:
+                        cfg['joystick_leading'] = not cfg['joystick_leading']
+                    elif selected == 3:
                         return cfg
             if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
                 mx, my = ev.pos
@@ -50,6 +52,8 @@ def run_options_menu(screen, initial_config=None):
                         elif i == 1:
                             cfg['fullscreen'] = not cfg['fullscreen']
                         elif i == 2:
+                            cfg['joystick_leading'] = not cfg['joystick_leading']
+                        elif i == 3:
                             return cfg
 
         # draw
@@ -74,6 +78,8 @@ def run_options_menu(screen, initial_config=None):
                 text = f"{label}: {'ON' if cfg['hardcore'] else 'OFF'}"
             elif i == 1:
                 text = f"{label}: {'ON' if cfg['fullscreen'] else 'OFF'}"
+            elif i == 2:
+                text = f"{label}: {'ON' if cfg['joystick_leading'] else 'OFF'}"
             else:
                 text = label
             txt = small.render(text, True, (0,70,220))

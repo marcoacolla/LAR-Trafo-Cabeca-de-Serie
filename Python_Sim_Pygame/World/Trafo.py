@@ -8,7 +8,7 @@ class Trafo:
     inside the player's hitbox. Stores a carrier reference when picked.
     Coordinates are in world units (same as player)."""
 
-    def __init__(self, x, y, size=60, color=(150, 80, 10), image_path=None, image_scale=2):
+    def __init__(self, x, y, size=60, color=(150, 80, 10), image_path=None, image_scale=1):
         self.x = x
         self.y = y
         self.size = size
@@ -101,9 +101,23 @@ class Trafo:
         half = max(1, int(round(self.size / 2)))
         
         if self.image_scaled:
-            # Draw the scaled image centered at the position
-            rect = self.image_scaled.get_rect(center=(int(sx), int(sy)))
-            surface.blit(self.image_scaled, rect)
+            # Get rotation angle from carrier if picked
+            angle = 0
+            if self.picked and self.carrier is not None:
+                try:
+                    angle = getattr(self.carrier, 'getHeading', lambda: 0)()
+                except Exception:
+                    angle = 0
+            
+            # Rotate image if angle is not zero
+            if angle != 0:
+                rotated_image = pygame.transform.rotate(self.image_scaled, -angle)
+                rect = rotated_image.get_rect(center=(int(sx), int(sy)))
+                surface.blit(rotated_image, rect)
+            else:
+                # Draw the scaled image centered at the position
+                rect = self.image_scaled.get_rect(center=(int(sx), int(sy)))
+                surface.blit(self.image_scaled, rect)
         else:
             # Fallback to drawing a square if no image is loaded
             rect = pygame.Rect(int(sx - half), int(sy - half), half * 2, half * 2)

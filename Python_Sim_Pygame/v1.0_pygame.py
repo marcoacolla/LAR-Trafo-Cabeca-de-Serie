@@ -254,10 +254,12 @@ try:
     # apply selected flags (will apply fullscreen later once camera exists)
     hardcore_mode = bool(_cfg_res.get('hardcore', False))
     start_menu_desired_fullscreen = bool(_cfg_res.get('fullscreen', False))
+    joystick_leading = bool(_cfg_res.get('joystick_leading', True))
 except Exception:
     # fallback defaults
     hardcore_mode = False
     start_menu_desired_fullscreen = False
+    joystick_leading = True
     selected_map_path = None
 # Fullscreen state tracking: windowed size and flag
 is_fullscreen = False
@@ -486,12 +488,30 @@ else:
         # How long (ms) to show the pickup indicator
         TRAFO_PICKUP_DISPLAY_MS = 1500
 
-
+# CAN-based movement: variable from 0 to 60000 that controls speed and movement when joystick_leading is OFF
+# Usage: call set_can_movement_value(value) to update the movement from CAN data
+# Value range: 0 = max reverse, 30000 = no movement, 60000 = max forward
+# When joystick_leading=True: Normal joystick control (independent of can_movement_value)
+# When joystick_leading=False: Movement is controlled by can_movement_value
+#   - Steering and curve adjustments still work as normal
+#   - The can_movement_value replaces the left joystick Y-axis (forward/backward)
+can_movement_value = 0  # 0 to 60000
 
 def _toggle_hardcore():
     global hardcore_mode
     hardcore_mode = not hardcore_mode
     # debug print removed
+
+def _toggle_joystick_leading():
+    global joystick_leading
+    joystick_leading = not joystick_leading
+    # debug print removed
+
+def set_can_movement_value(value):
+    """Update the CAN movement value (0 to 60000).
+    0 = max reverse, 30000 = no movement, 60000 = max forward"""
+    global can_movement_value
+    can_movement_value = max(0, min(60000, value))
 
 def _reset_trafo():
     try:
@@ -905,25 +925,58 @@ while running:
         move_speed = player.base_speed * player.get_speed_multiplier()
     except Exception:
         move_speed = 3
-    # If joystick control is active and controller reports available, use joystick inputs
+    
+    # Movement: either joystick-based (joystick_leading=True) or CAN-based (joystick_leading=False)
     try:
-        if control_mode == 'joystick':
-            if getattr(joystick_controller, 'available', False):
-                try:
-                    lx, ly, rx, ry = joystick_controller.getJoystickValues()
-                    player.move_with_joystick((lx, ly, rx, ry), speed=move_speed)
-                except Exception as e:
-                    # if joystick access fails at runtime, fall back to keyboard
+        if joystick_leading:
+            # JOYSTICK LEADING MODE: Standard joystick control
+            if control_mode == 'joystick':
+                if getattr(joystick_controller, 'available', False):
+                    try:
+                        lx, ly, rx, ry = joystick_controller.getJoystickValues()
+                        player.move_with_joystick((lx, ly, rx, ry), speed=move_speed)
+                    except Exception as e:
+                        # if joystick access fails at runtime, fall back to keyboard
+                        control_mode = 'keyboard'
+                        # debug print removed
+                        player.move(keys, speed=move_speed)
+                else:
+                    # joystick not available at runtime; fall back
                     control_mode = 'keyboard'
                     # debug print removed
                     player.move(keys, speed=move_speed)
             else:
-                # joystick not available at runtime; fall back
-                control_mode = 'keyboard'
-                # debug print removed
                 player.move(keys, speed=move_speed)
         else:
-            player.move(keys, speed=move_speed)
+            # CAN-BASED MODE: Movement controlled by can_movement_value (0 to 60000)
+            # Convert CAN value to simulated joystick input
+            # 30000 = middle (no movement), 0 = max reverse, 60000 = max forward
+            # Normalize to -1..1 range for joystick compatibility
+            can_normalized = (can_movement_value / 60000.0) * 2.0 - 1.0  # Convert 0-60000 to -1..1
+            
+            if control_mode == 'joystick' and getattr(joystick_controller, 'available', False):
+                try:
+                    # Use CAN value for movement but steering from right stick
+                    lx, ly, rx, ry = joystick_controller.getJoystickValues()
+                    # Replace left_y (forward/backward) with CAN value
+                    player.move_with_joystick((lx, can_normalized, rx, ry), speed=move_speed)
+                except Exception as e:
+                    # Fallback to keyboard if joystick fails
+                    control_mode = 'keyboard'
+                    player.move(keys, speed=move_speed)
+            else:
+                # Keyboard with CAN control: simulate movement based on CAN value
+                # Only apply CAN movement if it's significantly away from center
+                if abs(can_normalized) > 0.1:
+                    if can_normalized > 0:
+                        # Forward movement
+                        player.makeMovement("forward", step=move_speed * abs(can_normalized))
+                    else:
+                        # Backward movement
+                        player.makeMovement("backward", step=move_speed * abs(can_normalized))
+                else:
+                    # No CAN movement, use keyboard normally
+                    player.move(keys, speed=move_speed)
     except Exception:
         player.move(keys, speed=move_speed)
 
@@ -1202,7 +1255,7 @@ while running:
         mode_str = f'Mode: {player.curve_mode}  Velocidade: {speed_label} ({speed_pct}%)'
         # draw control mode + zoom + hardcore state at top-left for quick debug
         try:
-            hud_text = font.render(f'Control: {control_mode.upper()}  Zoom: {camera.scale:.2f}  Hardcore: {"ON" if hardcore_mode else "OFF"}', True, (255,255,255))
+            hud_text = font.render(f'Control: {control_mode.upper()}  Zoom: {camera.scale:.2f}  Hardcore: {"ON" if hardcore_mode else "OFF"}  Joy.Lead: {"ON" if joystick_leading else "OFF"}', True, (255,255,255))
             screen.blit(hud_text, (8, 8))
             # print control mode change only once to avoid log spam
             if control_mode != last_printed_control_mode:
