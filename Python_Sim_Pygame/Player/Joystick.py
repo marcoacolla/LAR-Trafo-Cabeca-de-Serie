@@ -33,6 +33,7 @@ class Joystick:
         self.CAN_CHANNEL_SPEED = 0x203
         # additional channel: external system sends image IDs (e.g. ASCII '0C')
         self.CAN_CHANNEL_IMAGE_ID = 0x210
+        self.CAN_CHANNEL_TRACTION = 0x204  
 
         # state
         self.lights = [False, False, False, False, False]
@@ -40,6 +41,7 @@ class Joystick:
         self.eixo_esquerdo_y = 0.0
         self.eixo_direito_x = 0.0
         self.eixo_direito_y = 0.0
+        self.valor_tracao = 0.0
         self.currentMode = 0
         self.currentSpeed = 0
         self.hasChangedMode = False
@@ -138,6 +140,10 @@ class Joystick:
                             # Se for chamável, chama
                             elif callable(self.ui_manager):
                                 self.ui_manager(id_str)
+                elif msg.arbitration_id == self.CAN_CHANNEL_TRACTION:
+                    if len(data) == 1:
+                        traction_value = struct.unpack('<b', data)[0]
+                        self.valor_tracao = traction_value
             except Exception:
                 pass
     def getJoystickValues(self):
@@ -146,3 +152,6 @@ class Joystick:
 
     def getLightsValues(self):
         return self.lights
+
+    def getTractionValue(self):
+        return self.valor_tracao

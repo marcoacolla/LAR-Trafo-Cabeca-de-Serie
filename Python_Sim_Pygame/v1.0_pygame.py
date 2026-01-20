@@ -1003,7 +1003,7 @@ while running:
     except Exception:
         move_speed = 3
     
-    # Movement: either joystick-based (joystick_leading=True) or CAN-based (joystick_leading=False)
+    # Movement: either joystick-based (joystick_leading=True) or CAN/TRACTION-based (joystick_leading=False)
     try:
         if joystick_leading:
             # JOYSTICK LEADING MODE: Standard joystick control
@@ -1012,48 +1012,55 @@ while running:
                     try:
                         lx, ly, rx, ry = joystick_controller.getJoystickValues()
                         player.move_with_joystick((lx, ly, rx, ry), speed=move_speed)
-                    except Exception as e:
-                        # if joystick access fails at runtime, fall back to keyboard
+                    except Exception:
                         control_mode = 'keyboard'
-                        # debug print removed
                         player.move(keys, speed=move_speed)
                 else:
-                    # joystick not available at runtime; fall back
                     control_mode = 'keyboard'
-                    # debug print removed
                     player.move(keys, speed=move_speed)
             else:
                 player.move(keys, speed=move_speed)
         else:
-            # CAN-BASED MODE: Movement controlled by can_movement_value (0 to 60000)
-            # Convert CAN value to simulated joystick input
-            # 30000 = middle (no movement), 0 = max reverse, 60000 = max forward
-            # Normalize to -1..1 range for joystick compatibility
-            can_normalized = (can_movement_value / 60000.0) * 2.0 - 1.0  # Convert 0-60000 to -1..1
-            
+            # JOYSTICK_LEADING is OFF: prefer traction value from joystick controller
+            # Traction range expected: -33 .. 33 (positive = forward, negative = backward)
+            traction_norm = 0.0
+            try:
+                if getattr(joystick_controller, 'available', False) and hasattr(joystick_controller, 'getTractionValue'):
+                    raw = joystick_controller.getTractionValue()  # -33..33
+                    # normalize to -1..1 taking 33 as max magnitude
+                    traction_norm = max(-1.0, min(1.0, float(raw) / 33.0))
+                else:
+                    # If traction is not available, assume zero (no forward/back movement)
+                    traction_norm = 0.0
+            except Exception:
+                traction_norm = 0.0
+
+            # If in joystick control mode use steering from sticks but force forward/back from traction
             if control_mode == 'joystick' and getattr(joystick_controller, 'available', False):
                 try:
-                    # Use CAN value for movement but steering from right stick
                     lx, ly, rx, ry = joystick_controller.getJoystickValues()
-                    # Replace left_y (forward/backward) with CAN value
-                    player.move_with_joystick((lx, can_normalized, rx, ry), speed=move_speed)
-                except Exception as e:
-                    # Fallback to keyboard if joystick fails
+                    # move_with_joystick expects movement on right_y (ry), so place traction_norm there
+                    player.move_with_joystick((lx, ly, rx, traction_norm), speed=move_speed)
+                except Exception:
                     control_mode = 'keyboard'
                     player.move(keys, speed=move_speed)
             else:
-                # Keyboard with CAN control: simulate movement based on CAN value
-                # Only apply CAN movement if it's significantly away from center
-                if abs(can_normalized) > 0.1:
-                    if can_normalized > 0:
-                        # Forward movement
-                        player.makeMovement("forward", step=move_speed * abs(can_normalized))
+                # Keyboard (or joystick unavailable): only use traction for forward/back.
+                # Prevent keyboard W/S from moving the player by passing a copy
+                # of `keys` with those entries cleared.
+                if abs(traction_norm) > 0.1:
+                    if traction_norm > 0:
+                        player.makeMovement("forward", step=move_speed * abs(traction_norm))
                     else:
-                        # Backward movement
-                        player.makeMovement("backward", step=move_speed * abs(can_normalized))
-                else:
-                    # No CAN movement, use keyboard normally
-                    player.move(keys, speed=move_speed)
+                        player.makeMovement("backward", step=move_speed * abs(traction_norm))
+                # process other keyboard inputs (steering, ICR adjustments) but ignore W/S
+                try:
+                    keys_no_ws = list(keys)
+                    keys_no_ws[pygame.K_w] = False
+                    keys_no_ws[pygame.K_s] = False
+                    player.move(keys_no_ws, speed=move_speed)
+                except Exception:
+                    pass
     except Exception:
         player.move(keys, speed=move_speed)
 
@@ -1075,6 +1082,26 @@ while running:
         screen.blit(scaled_map, (-camera.offset_x * camera.scale, -camera.offset_y * camera.scale))
     else:
         screen.blit(map_image, (-camera.offset_x, -camera.offset_y))
+
+    # Debug: show current traction value from joystick controller (temporary)
+    try:
+        traction_display = 'N/A'
+        if 'joystick_controller' in globals() and getattr(joystick_controller, 'available', False) and hasattr(joystick_controller, 'getTractionValue'):
+            try:
+                tv = joystick_controller.getTractionValue()
+                traction_display = f'{float(tv):.1f}'
+            except Exception:
+                traction_display = 'err'
+        fnt = pygame.font.SysFont(None, 20)
+        txt_surf = fnt.render(f'Traction: {traction_display}', True, (10, 10, 10))
+        # small background for readability
+        pad = 6
+        bg_rect = pygame.Rect(8, 8, txt_surf.get_width() + pad, txt_surf.get_height() + pad // 2)
+        pygame.draw.rect(screen, (240, 240, 240), bg_rect)
+        pygame.draw.rect(screen, (100, 100, 100), bg_rect, 1)
+        screen.blit(txt_surf, (12, 10))
+    except Exception:
+        pass
 
 
     # Verificar colisão do player com paredes usando hitbox rotacionada
