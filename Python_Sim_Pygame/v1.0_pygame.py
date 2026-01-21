@@ -499,9 +499,9 @@ can_movement_value = 0  # 0 to 60000
 
 # ==================== ACELERÔMETRO / INCLINAÇÃO ====================
 # Simula o acelerômetro baseado em tons vermelhos do mapa
-# 0 = reto, 6000 = 90 graus de inclinação
+# 0 = reto, 90 = 90 graus de inclinação
 # Configurações editáveis
-ACCELEROMETER_MAX_VALUE = 6000  # máximo valor do acelerômetro (simula 90 graus)
+ACCELEROMETER_MAX_VALUE = 90  # máximo valor do acelerômetro em graus
 ACCELEROMETER_RED_MIN_DIFF = 80  # diferença mínima entre R e max(G,B) para detectar vermelho
 ACCELEROMETER_GB_MAX_DIFF = 30   # diferença máxima entre G e B (para G e B serem "iguais")
 ACCELEROMETER_SAMPLES = 4  # número de pontos ao redor do robô para amostrar (4 cantos da base)
@@ -562,12 +562,11 @@ def calculate_accelerometer_value():
         # Usa a média dos valores de "avermelhamento"
         avg_red_intensity = sum(red_intensities) / len(red_intensities)
         
-        # Mapeia de [0, 255] para [0, ACCELEROMETER_MAX_VALUE]
+        # Mapeia de [0, 255] para [0, ACCELEROMETER_MAX_VALUE] (em graus)
         # A intensidade máxima é quando R=255 e G=B=0, dando red_diff=255
         normalized = min(1.0, avg_red_intensity / 255.0)
-        accel_value = int(normalized * ACCELEROMETER_MAX_VALUE)
-        
-        return min(ACCELEROMETER_MAX_VALUE, max(0, accel_value))
+        accel_deg = int(round(normalized * ACCELEROMETER_MAX_VALUE))
+        return min(ACCELEROMETER_MAX_VALUE, max(0, accel_deg))
     except Exception:
         return 0
 
@@ -1022,13 +1021,13 @@ while running:
                 player.move(keys, speed=move_speed)
         else:
             # JOYSTICK_LEADING is OFF: prefer traction value from joystick controller
-            # Traction range expected: -33 .. 33 (positive = forward, negative = backward)
+            # Traction range expected: -77 .. 77 (positive = forward, negative = backward)
             traction_norm = 0.0
             try:
                 if getattr(joystick_controller, 'available', False) and hasattr(joystick_controller, 'getTractionValue'):
-                    raw = joystick_controller.getTractionValue()  # -33..33
-                    # normalize to -1..1 taking 33 as max magnitude
-                    traction_norm = max(-1.0, min(1.0, float(raw) / 33.0))
+                    raw = joystick_controller.getTractionValue()  # -77..77
+                    # normalize to -1..1 taking 77 as max magnitude
+                    traction_norm = max(-1.0, min(1.0, float(raw) / 77.0))
                 else:
                     # If traction is not available, assume zero (no forward/back movement)
                     traction_norm = 0.0
@@ -1069,6 +1068,27 @@ while running:
         current_accelerometer_value = calculate_accelerometer_value()
     except Exception:
         current_accelerometer_value = 0
+
+    # Send virtual inclinometer value over CAN via joystick controller (channel 0x220)
+    try:
+        if 'joystick_controller' in globals() and getattr(joystick_controller, 'available', False) and hasattr(joystick_controller, 'send_inclinometer'):
+            # current_accelerometer_value is already in degrees 0..ACCELEROMETER_MAX_VALUE
+            try:
+                inclin_deg = int(round(float(current_accelerometer_value)))
+            except Exception:
+                inclin_deg = 0
+            inclin_deg = max(0, min(ACCELEROMETER_MAX_VALUE, inclin_deg))
+            joystick_controller.send_inclinometer(inclin_deg)
+    except Exception:
+        pass
+
+    # Send simulated traction (from player) over CAN on 0x221
+    try:
+        if 'joystick_controller' in globals() and getattr(joystick_controller, 'available', False) and hasattr(player, 'TractionSim') and hasattr(joystick_controller, 'send_sim_traction'):
+            sim_tr = int(player.TractionSim())
+            joystick_controller.send_sim_traction(sim_tr)
+    except Exception:
+        pass
 
     # Atualiza câmera antes de desenhar (offset/scale)
     camera.update(player)

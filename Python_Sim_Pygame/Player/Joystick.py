@@ -34,6 +34,10 @@ class Joystick:
         # additional channel: external system sends image IDs (e.g. ASCII '0C')
         self.CAN_CHANNEL_IMAGE_ID = 0x210
         self.CAN_CHANNEL_TRACTION = 0x204  
+        # channel to send virtual inclinometer/accelerometer
+        self.CAN_CHANNEL_INCLINOMETER = 0x220
+        # channel to send simulated traction
+        self.CAN_CHANNEL_SIM_TRACTION = 0x221
 
         # state
         self.lights = [False, False, False, False, False]
@@ -155,3 +159,35 @@ class Joystick:
 
     def getTractionValue(self):
         return self.valor_tracao
+
+    def send_inclinometer(self, value):
+        """Send the given inclinometer value over CAN on 0x220.
+
+        The value should be in degrees (0..90). It is sent as an unsigned
+        16-bit little-endian integer. Returns True on success, False otherwise.
+        """
+        if not self.available or self.bus is None:
+            return False
+        try:
+            v = int(max(0, min(65535, value)))
+            data = struct.pack('<H', v)
+            msg = can.Message(arbitration_id=self.CAN_CHANNEL_INCLINOMETER, data=data, is_extended_id=False)
+            # send non-blocking with small timeout
+            self.bus.send(msg, timeout=0.01)
+            return True
+        except Exception:
+            return False
+
+    def send_sim_traction(self, value):
+        """Send simulated traction value over CAN on 0x221 as signed byte (-77..77)."""
+        if not self.available or self.bus is None:
+            return False
+        try:
+            v = int(max(-128, min(127, value)))
+            # send as signed 8-bit
+            data = struct.pack('<b', v)
+            msg = can.Message(arbitration_id=self.CAN_CHANNEL_SIM_TRACTION, data=data, is_extended_id=False)
+            self.bus.send(msg, timeout=0.01)
+            return True
+        except Exception:
+            return False

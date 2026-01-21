@@ -70,9 +70,62 @@ class Player:
         self.setMode("straight")
         # icamento cursor (0.0..1.0) used by the special 'icamento' mode UI
         self.icamento_cursor = 0.5
+        # Traction simulation state
+        self._last_sim_pos = None
+        self._sim_traction = 0
 
     def getName(self):
         return "player"
+    def TractionSim(self, error_fraction=0.05):
+        """Simulate traction reading based on how much the robot moved in the simulator.
+
+        - Computes forward/backward displacement since last call (signed),
+          projects world displacement onto the robot heading to get signed distance.
+        - Maps one frame's typical step (~move_speed) to the max traction magnitude (77),
+          then applies a small error by scaling down by `error_fraction`.
+        - Returns an integer in the same limits as `valor_tracao` (clamped to -77..77).
+        """
+        try:
+            px, py = self.getPosition()
+            if self._last_sim_pos is None:
+                self._last_sim_pos = (px, py)
+                self._sim_traction = 0
+                return int(self._sim_traction)
+
+            lx, ly = self._last_sim_pos
+            dx = px - lx
+            dy = py - ly
+
+            # Project displacement onto forward vector based on heading
+            heading_rad = math.radians(self.getHeading())
+            # forward unit vector used elsewhere: (sin, -cos)
+            forward_comp = dx * math.sin(heading_rad) + dy * (-math.cos(heading_rad))
+
+            # Estimate a per-frame reference distance: use base_speed * speed_multiplier
+            try:
+                ref = max(1e-3, self.base_speed * self.get_speed_multiplier())
+            except Exception:
+                ref = max(1e-3, getattr(self, 'base_speed', 3.0))
+
+            # Map forward_comp relative to ref so that ref -> 77 units
+            raw = int(round((forward_comp / ref) * 77.0))
+
+            # Apply error: slightly reduce magnitude to simulate measurement error
+            sim = int(round(raw * (1.0 - float(error_fraction))))
+
+            # Clamp to -77..77
+            sim = max(-77, min(77, sim))
+
+            # store and update last pos
+            self._sim_traction = sim
+            self._last_sim_pos = (px, py)
+            return int(self._sim_traction)
+        except Exception:
+            return int(self._sim_traction)
+
+    def getSimTraction(self):
+        """Return last simulated traction value (int, -77..77)."""
+        return int(self._sim_traction)
     
     def setPosition(self, pos):
         self.x, self.y = pos
