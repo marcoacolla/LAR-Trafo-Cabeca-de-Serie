@@ -444,8 +444,8 @@ class Player:
         robot_move_joystick = ry
         robot_move_joystick_t = ry_treated
 
-        robot_curve_joystick = lx
-        robot_curve_joystick_t = lx_treated
+        robot_curve_joystick = rx
+        robot_curve_joystick_t = rx_treated
 
         robot_pivotal_x_joystick = lx
         robot_pivotal_x_joystick_t = lx_treated
@@ -459,8 +459,8 @@ class Player:
         robot_icamento_control = ry
         robot_icamento_control_t = ry_treated
 
-        icr_y_axis_joystick = ly
-        icr_y_axis_joystick_t = ly_treated
+        icr_y_axis_joystick = -ly
+        icr_y_axis_joystick_t = -ly_treated
 
         self.update_transition()
         if self.is_transitioning:
@@ -480,7 +480,7 @@ class Player:
 
         # Mode-specific handling
         if self.curve_mode == 'straight':
-            if abs(self.icr_bias) != .5:
+            if abs(self.icr_bias - 0.5) > 0.01:
                 self.setMode('curve', curveStart=GLV.CURVE_MAX_RADIUS)
             if move_amt > 0:
                 if robot_move_joystick < 0:
