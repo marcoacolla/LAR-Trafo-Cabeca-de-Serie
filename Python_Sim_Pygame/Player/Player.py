@@ -1160,6 +1160,8 @@ class Player:
             # draw gray background bar (static)
             pygame.draw.rect(screen, (120, 120, 120), (gray_x, bar_y, gray_w, gray_h))
 
+            # (wheel drawing moved below so it can be rendered on top)
+
             # draw moving yellow rectangle on top to create illusion of the gray
             # sliding down while the yellow moves up. The yellow rect is narrower
             # vertically and moves between min_top..max_top as icamento_cursor changes.
@@ -1193,6 +1195,17 @@ class Player:
                         tx2 = bar_x - txt2.get_width() - 8
                         ty2 = bar_y + bar_h - txt2.get_height() - 8
                         screen.blit(txt2, (tx2, ty2))
+                    # draw fixed wheel on top of the yellow bar and move it 20px up
+                    try:
+                        wheel_outer_r = max(18, int(bar_w * 0.75))
+                        wheel_inner_r = max(9, int(wheel_outer_r * 0.55))
+                        wheel_cx = gray_x + (gray_w // 2)
+                        # place wheel tangent to the bottom of the gray bar, shifted up 20px
+                        wheel_cy = bar_y + gray_h + wheel_outer_r - 20
+                        pygame.draw.circle(screen, (0, 0, 0), (wheel_cx, wheel_cy), wheel_outer_r)
+                        pygame.draw.circle(screen, (160, 160, 160), (wheel_cx, wheel_cy), wheel_inner_r)
+                    except Exception:
+                        pass
             except Exception:
                 pass
         except Exception:
