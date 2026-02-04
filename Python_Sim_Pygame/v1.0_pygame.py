@@ -218,6 +218,182 @@ class SidePanel:
             pass
 
 
+# -------------------------
+# PauseMenu: Menu de pausa com opções de configuração
+# -------------------------
+class PauseMenu:
+    def __init__(self, font=None):
+        self.font = font or pygame.font.SysFont(None, 24)
+        self.small_font = pygame.font.SysFont(None, 18)
+        self.is_open = False
+        self.selected_option = 0
+        self.current_menu = 'main'  # 'main' ou 'settings'
+        self.editing_option = None  # qual configuração está sendo editada (índice)
+        
+        # Opções do menu principal
+        self.main_options = [
+            ('Continuar', 'continue'),
+            ('Configurações', 'settings'),
+            ('Voltar ao Menu', 'exit_menu'),
+            ('Sair', 'exit_game'),
+        ]
+        
+        # Configurações (referências ao escopo global)
+        self.settings = []
+    
+    def update_settings_references(self):
+        """Atualiza as referências às configurações do escopo global"""
+        self.settings = [
+            ('ACELERÔMETRO MAX VALUE', 'ACCELEROMETER_MAX_VALUE', 0, 10000),
+            ('ACELERÔMETRO RED MIN DIFF', 'ACCELEROMETER_RED_MIN_DIFF', 0, 255),
+            ('ACELERÔMETRO GB MAX DIFF', 'ACCELEROMETER_GB_MAX_DIFF', 0, 100),
+        ]
+    
+    def open(self):
+        self.is_open = True
+        self.selected_option = 0
+        self.current_menu = 'main'
+        self.editing_option = None
+    
+    def close(self):
+        self.is_open = False
+    
+    def toggle(self):
+        if self.is_open:
+            self.close()
+        else:
+            self.open()
+    
+    def handle_input(self, keys, prev_keys):
+        """Processa entrada do teclado"""
+        if not self.is_open:
+            return None
+        
+        # Detecta pressionamento de teclas (edge detection)
+        if self.current_menu == 'main':
+            if keys[pygame.K_UP] and not prev_keys[pygame.K_UP]:
+                self.selected_option = (self.selected_option - 1) % len(self.main_options)
+            elif keys[pygame.K_DOWN] and not prev_keys[pygame.K_DOWN]:
+                self.selected_option = (self.selected_option + 1) % len(self.main_options)
+            elif keys[pygame.K_RETURN] and not prev_keys[pygame.K_RETURN]:
+                action = self.main_options[self.selected_option][1]
+                if action == 'continue':
+                    self.close()
+                    return 'continue'
+                elif action == 'settings':
+                    self.current_menu = 'settings'
+                    self.selected_option = 0
+                    self.editing_option = None
+                elif action == 'exit_menu':
+                    return 'exit_menu'
+                elif action == 'exit_game':
+                    return 'exit_game'
+        
+        elif self.current_menu == 'settings':
+            if keys[pygame.K_ESCAPE] and not prev_keys[pygame.K_ESCAPE]:
+                self.current_menu = 'main'
+                self.selected_option = 0
+                self.editing_option = None
+            elif self.editing_option is None:
+                # Navegação entre configurações
+                if keys[pygame.K_UP] and not prev_keys[pygame.K_UP]:
+                    self.selected_option = (self.selected_option - 1) % len(self.settings)
+                elif keys[pygame.K_DOWN] and not prev_keys[pygame.K_DOWN]:
+                    self.selected_option = (self.selected_option + 1) % len(self.settings)
+                elif keys[pygame.K_RETURN] and not prev_keys[pygame.K_RETURN]:
+                    self.editing_option = self.selected_option
+            else:
+                # Editando valor
+                label, var_name, min_val, max_val = self.settings[self.editing_option]
+                current_val = globals().get(var_name, min_val)
+                
+                if keys[pygame.K_LEFT] and not prev_keys[pygame.K_LEFT]:
+                    new_val = max(min_val, current_val - 10)
+                    globals()[var_name] = new_val
+                elif keys[pygame.K_RIGHT] and not prev_keys[pygame.K_RIGHT]:
+                    new_val = min(max_val, current_val + 10)
+                    globals()[var_name] = new_val
+                elif keys[pygame.K_RETURN] and not prev_keys[pygame.K_RETURN]:
+                    self.editing_option = None
+        
+        return None
+    
+    def draw(self, surface):
+        """Desenha o menu de pausa"""
+        if not self.is_open:
+            return
+        
+        # Desenha fundo semi-transparente
+        overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        surface.blit(overlay, (0, 0))
+        
+        # Dimensões do menu
+        menu_width = 400
+        menu_height = 300 if self.current_menu == 'main' else 350
+        menu_x = (surface.get_width() - menu_width) // 2
+        menu_y = (surface.get_height() - menu_height) // 2
+        
+        # Desenha caixa do menu
+        menu_rect = pygame.Rect(menu_x, menu_y, menu_width, menu_height)
+        pygame.draw.rect(surface, (40, 40, 40), menu_rect)
+        pygame.draw.rect(surface, (255, 255, 255), menu_rect, 3)
+        
+        # Título
+        if self.current_menu == 'main':
+            title = self.font.render('PAUSA', True, (255, 255, 255))
+            title_rect = title.get_rect(center=(menu_x + menu_width // 2, menu_y + 20))
+            surface.blit(title, title_rect)
+            
+            # Opções do menu principal
+            option_y = menu_y + 70
+            for idx, (label, _) in enumerate(self.main_options):
+                if idx == self.selected_option:
+                    bg_rect = pygame.Rect(menu_x + 10, option_y - 5, menu_width - 20, 30)
+                    pygame.draw.rect(surface, (100, 150, 255), bg_rect)
+                    txt = self.font.render(label, True, (255, 255, 255))
+                else:
+                    txt = self.font.render(label, True, (200, 200, 200))
+                surface.blit(txt, (menu_x + 30, option_y))
+                option_y += 50
+            
+            # Instrução
+            hint = self.small_font.render('ENTER: Selecionar | ESC: Continuar', True, (150, 150, 150))
+            surface.blit(hint, (menu_x + 10, menu_y + menu_height - 30))
+        
+        elif self.current_menu == 'settings':
+            title = self.font.render('CONFIGURAÇÕES', True, (255, 255, 255))
+            title_rect = title.get_rect(center=(menu_x + menu_width // 2, menu_y + 15))
+            surface.blit(title, title_rect)
+            
+            # Configurações
+            option_y = menu_y + 55
+            for idx, (label, var_name, min_val, max_val) in enumerate(self.settings):
+                current_val = globals().get(var_name, min_val)
+                
+                if idx == self.selected_option:
+                    bg_rect = pygame.Rect(menu_x + 10, option_y - 3, menu_width - 20, 28)
+                    pygame.draw.rect(surface, (100, 150, 255), bg_rect)
+                    
+                    if self.editing_option == idx:
+                        # Modo edição
+                        txt = self.small_font.render(f'{label}: {current_val} (editando...)', True, (255, 255, 0))
+                    else:
+                        txt = self.small_font.render(f'{label}: {current_val}', True, (255, 255, 255))
+                else:
+                    txt = self.small_font.render(f'{label}: {current_val}', True, (200, 200, 200))
+                
+                surface.blit(txt, (menu_x + 20, option_y))
+                option_y += 40
+            
+            # Instruções
+            if self.editing_option is None:
+                hint = self.small_font.render('ENTER: Editar | ESC: Voltar', True, (150, 150, 150))
+            else:
+                hint = self.small_font.render('← → Ajustar | ENTER: Confirmar', True, (150, 150, 150))
+            surface.blit(hint, (menu_x + 10, menu_y + menu_height - 25))
+
+
 pygame.init()
 # Main display and layout: reserve a right-side panel for customizable UI
 PANEL_WIDTH = 300  # largura padrão do painel lateral (personalizável)
@@ -416,6 +592,12 @@ else:
 
 camera = Camera(SCREEN_W, SCREEN_H)
 player = Player(SPAWN_POINT, screen, camera)
+# inform camera about map bounds so it can clamp offsets to map extents
+try:
+    camera.map_width = map_image.get_width()
+    camera.map_height = map_image.get_height()
+except Exception:
+    pass
 # If startup menu requested fullscreen, apply it now (camera exists for toggle)
 try:
     if start_menu_desired_fullscreen and not is_fullscreen:
@@ -499,9 +681,9 @@ can_movement_value = 0  # 0 to 60000
 
 # ==================== ACELERÔMETRO / INCLINAÇÃO ====================
 # Simula o acelerômetro baseado em tons vermelhos do mapa
-# 0 = reto, 90 = 90 graus de inclinação
+# 0 = reto, 6000 = 90 graus de inclinação
 # Configurações editáveis
-ACCELEROMETER_MAX_VALUE = 90  # máximo valor do acelerômetro em graus
+ACCELEROMETER_MAX_VALUE = 6000  # máximo valor do acelerômetro (simula 90 graus)
 ACCELEROMETER_RED_MIN_DIFF = 80  # diferença mínima entre R e max(G,B) para detectar vermelho
 ACCELEROMETER_GB_MAX_DIFF = 30   # diferença máxima entre G e B (para G e B serem "iguais")
 ACCELEROMETER_SAMPLES = 4  # número de pontos ao redor do robô para amostrar (4 cantos da base)
@@ -562,16 +744,20 @@ def calculate_accelerometer_value():
         # Usa a média dos valores de "avermelhamento"
         avg_red_intensity = sum(red_intensities) / len(red_intensities)
         
-        # Mapeia de [0, 255] para [0, ACCELEROMETER_MAX_VALUE] (em graus)
+        # Mapeia de [0, 255] para [0, ACCELEROMETER_MAX_VALUE]
         # A intensidade máxima é quando R=255 e G=B=0, dando red_diff=255
         normalized = min(1.0, avg_red_intensity / 255.0)
-        accel_deg = int(round(normalized * ACCELEROMETER_MAX_VALUE))
-        return min(ACCELEROMETER_MAX_VALUE, max(0, accel_deg))
+        accel_value = int(normalized * ACCELEROMETER_MAX_VALUE)
+        
+        return min(ACCELEROMETER_MAX_VALUE, max(0, accel_value))
     except Exception:
         return 0
 
 # Variável global para armazenar o valor atual do acelerômetro
 current_accelerometer_value = 0
+
+# Criar instância do menu de pausa
+pause_menu = PauseMenu()
 
 def _toggle_hardcore():
     global hardcore_mode
@@ -939,8 +1125,14 @@ while running:
                 player.set_speed_mode('lenta')
             except Exception:
                 pass
+        # Abrir/fechar menu de pausa com P (tecla dedicada)
+        if keys[pygame.K_p] and not prev_keys[pygame.K_p] and not pause_menu.is_open:
+            pause_menu.open()
         if keys[pygame.K_ESCAPE]:
-            running = False
+            if pause_menu.is_open:
+                pause_menu.close()
+            else:
+                running = False
     except Exception:
         pass
 
@@ -964,37 +1156,55 @@ while running:
 
     prev_keys = keys
 
-    # Panel navigation keys (Tab to cycle screens, arrows to move, Enter to activate)
+    # Processar menu de pausa
     try:
-        if keys[pygame.K_TAB] and not prev_keys[pygame.K_TAB]:
-            ui.next_screen()
-        if keys[pygame.K_UP] and not prev_keys[pygame.K_UP]:
-            ui.select_prev()
-        if keys[pygame.K_DOWN] and not prev_keys[pygame.K_DOWN]:
-            ui.select_next()
-        if keys[pygame.K_RETURN] and not prev_keys[pygame.K_RETURN]:
-            ui.activate()
-    except Exception:
+        pause_menu.update_settings_references()
+        menu_action = pause_menu.handle_input(keys, prev_keys)
+        if menu_action == 'exit_menu':
+            running = False
+            break
+        elif menu_action == 'exit_game':
+            pygame.quit()
+            import sys
+            sys.exit(0)
+    except Exception as e:
         pass
 
+    # Panel navigation keys (Tab to cycle screens, arrows to move, Enter to activate)
+    # Só processa se o menu de pausa não estiver aberto
+    if not pause_menu.is_open:
+        try:
+            if keys[pygame.K_TAB] and not prev_keys[pygame.K_TAB]:
+                ui.next_screen()
+            if keys[pygame.K_UP] and not prev_keys[pygame.K_UP]:
+                ui.select_prev()
+            if keys[pygame.K_DOWN] and not prev_keys[pygame.K_DOWN]:
+                ui.select_next()
+            if keys[pygame.K_RETURN] and not prev_keys[pygame.K_RETURN]:
+                ui.activate()
+        except Exception:
+            pass
+
     # Zoom controls (j = zoom out, k = zoom in)
-    try:
-        # zoom amount per frame scaled by dt so it's framerate independent
-        ZOOM_SPEED = 0.04
-        MIN_SCALE = 0.25
-        MAX_SCALE = 4.0
-        zoom_changed = False
-        if keys[pygame.K_j]:
-            camera.scale = max(MIN_SCALE, camera.scale - ZOOM_SPEED * (dt / 16.0))
-            zoom_changed = True
-        if keys[pygame.K_k]:
-            camera.scale = min(MAX_SCALE, camera.scale + ZOOM_SPEED * (dt / 16.0))
-            zoom_changed = True
-        if zoom_changed:
-            # re-center camera when zoom changes
-            camera.update(player)
-    except Exception:
-        pass
+    # Só processa se o menu de pausa não estiver aberto
+    if not pause_menu.is_open:
+        try:
+            # zoom amount per frame scaled by dt so it's framerate independent
+            ZOOM_SPEED = 0.04
+            MIN_SCALE = 0.25
+            MAX_SCALE = 4.0
+            zoom_changed = False
+            if keys[pygame.K_j]:
+                camera.scale = max(MIN_SCALE, camera.scale - ZOOM_SPEED * (dt / 16.0))
+                zoom_changed = True
+            if keys[pygame.K_k]:
+                camera.scale = min(MAX_SCALE, camera.scale + ZOOM_SPEED * (dt / 16.0))
+                zoom_changed = True
+            if zoom_changed:
+                # re-center camera when zoom changes
+                camera.update(player)
+        except Exception:
+            pass
 
     # compute movement speed from player base and current speed multiplier
     try:
@@ -1002,93 +1212,67 @@ while running:
     except Exception:
         move_speed = 3
     
-    # Movement: either joystick-based (joystick_leading=True) or CAN/TRACTION-based (joystick_leading=False)
-    try:
-        if joystick_leading:
-            # JOYSTICK LEADING MODE: Standard joystick control
-            if control_mode == 'joystick':
-                if getattr(joystick_controller, 'available', False):
+    # Movement: either joystick-based (joystick_leading=True) or CAN-based (joystick_leading=False)
+    # (pula se o menu de pausa estiver aberto)
+    if not pause_menu.is_open:
+        try:
+            if joystick_leading:
+                # JOYSTICK LEADING MODE: Standard joystick control
+                if control_mode == 'joystick':
+                    if getattr(joystick_controller, 'available', False):
+                        try:
+                            lx, ly, rx, ry = joystick_controller.getJoystickValues()
+                            player.move_with_joystick((lx, ly, rx, ry), speed=move_speed)
+                        except Exception as e:
+                            # if joystick access fails at runtime, fall back to keyboard
+                            control_mode = 'keyboard'
+                            # debug print removed
+                            player.move(keys, speed=move_speed)
+                    else:
+                        # joystick not available at runtime; fall back
+                        control_mode = 'keyboard'
+                        # debug print removed
+                        player.move(keys, speed=move_speed)
+                else:
+                    player.move(keys, speed=move_speed)
+            else:
+                # CAN-BASED MODE: Movement controlled by can_movement_value (0 to 60000)
+                # Convert CAN value to simulated joystick input
+                # 30000 = middle (no movement), 0 = max reverse, 60000 = max forward
+                # Normalize to -1..1 range for joystick compatibility
+                can_normalized = (can_movement_value / 60000.0) * 2.0 - 1.0  # Convert 0-60000 to -1..1
+                
+                if control_mode == 'joystick' and getattr(joystick_controller, 'available', False):
                     try:
+                        # Use CAN value for movement but steering from right stick
                         lx, ly, rx, ry = joystick_controller.getJoystickValues()
-                        player.move_with_joystick((lx, ly, rx, ry), speed=move_speed)
-                    except Exception:
+                        # Replace left_y (forward/backward) with CAN value
+                        player.move_with_joystick((lx, can_normalized, rx, ry), speed=move_speed)
+                    except Exception as e:
+                        # Fallback to keyboard if joystick fails
                         control_mode = 'keyboard'
                         player.move(keys, speed=move_speed)
                 else:
-                    control_mode = 'keyboard'
-                    player.move(keys, speed=move_speed)
-            else:
-                player.move(keys, speed=move_speed)
-        else:
-            # JOYSTICK_LEADING is OFF: prefer traction value from joystick controller
-            # Traction range expected: -77 .. 77 (positive = forward, negative = backward)
-            traction_norm = 0.0
-            try:
-                if getattr(joystick_controller, 'available', False) and hasattr(joystick_controller, 'getTractionValue'):
-                    raw = joystick_controller.getTractionValue()  # -77..77
-                    # normalize to -1..1 taking 77 as max magnitude
-                    traction_norm = max(-1.0, min(1.0, float(raw) / 77.0))
-                else:
-                    # If traction is not available, assume zero (no forward/back movement)
-                    traction_norm = 0.0
-            except Exception:
-                traction_norm = 0.0
-
-            # If in joystick control mode use steering from sticks but force forward/back from traction
-            if control_mode == 'joystick' and getattr(joystick_controller, 'available', False):
-                try:
-                    lx, ly, rx, ry = joystick_controller.getJoystickValues()
-                    # move_with_joystick expects movement on right_y (ry), so place traction_norm there
-                    player.move_with_joystick((lx, ly, rx, traction_norm), speed=move_speed)
-                except Exception:
-                    control_mode = 'keyboard'
-                    player.move(keys, speed=move_speed)
-            else:
-                # Keyboard (or joystick unavailable): only use traction for forward/back.
-                # Prevent keyboard W/S from moving the player by passing a copy
-                # of `keys` with those entries cleared.
-                if abs(traction_norm) > 0.1:
-                    if traction_norm > 0:
-                        player.makeMovement("forward", step=move_speed * abs(traction_norm))
+                    # Keyboard with CAN control: simulate movement based on CAN value
+                    # Only apply CAN movement if it's significantly away from center
+                    if abs(can_normalized) > 0.1:
+                        if can_normalized > 0:
+                            # Forward movement
+                            player.makeMovement("forward", step=move_speed * abs(can_normalized))
+                        else:
+                            # Backward movement
+                            player.makeMovement("backward", step=move_speed * abs(can_normalized))
                     else:
-                        player.makeMovement("backward", step=move_speed * abs(traction_norm))
-                # process other keyboard inputs (steering, ICR adjustments) but ignore W/S
-                try:
-                    keys_no_ws = list(keys)
-                    keys_no_ws[pygame.K_w] = False
-                    keys_no_ws[pygame.K_s] = False
-                    player.move(keys_no_ws, speed=move_speed)
-                except Exception:
-                    pass
-    except Exception:
-        player.move(keys, speed=move_speed)
+                        # No CAN movement, use keyboard normally
+                        player.move(keys, speed=move_speed)
+        except Exception:
+            player.move(keys, speed=move_speed)
 
     # Atualiza acelerômetro (valor simulado baseado em tons vermelhos do mapa)
     try:
         current_accelerometer_value = calculate_accelerometer_value()
     except Exception:
         current_accelerometer_value = 0
-
-    # Send virtual inclinometer value over CAN via joystick controller (channel 0x220)
-    try:
-        if 'joystick_controller' in globals() and getattr(joystick_controller, 'available', False) and hasattr(joystick_controller, 'send_inclinometer'):
-            # current_accelerometer_value is already in degrees 0..ACCELEROMETER_MAX_VALUE
-            try:
-                inclin_deg = int(round(float(current_accelerometer_value)))
-            except Exception:
-                inclin_deg = 0
-            inclin_deg = max(0, min(ACCELEROMETER_MAX_VALUE, inclin_deg))
-            joystick_controller.send_inclinometer(inclin_deg)
-    except Exception:
-        pass
-
-    # Send simulated traction (from player) over CAN on 0x221
-    try:
-        if 'joystick_controller' in globals() and getattr(joystick_controller, 'available', False) and hasattr(player, 'TractionSim') and hasattr(joystick_controller, 'send_sim_traction'):
-            sim_tr = int(player.TractionSim())
-            joystick_controller.send_sim_traction(sim_tr)
-    except Exception:
-        pass
 
     # Atualiza câmera antes de desenhar (offset/scale)
     camera.update(player)
@@ -1102,26 +1286,6 @@ while running:
         screen.blit(scaled_map, (-camera.offset_x * camera.scale, -camera.offset_y * camera.scale))
     else:
         screen.blit(map_image, (-camera.offset_x, -camera.offset_y))
-
-    # Debug: show current traction value from joystick controller (temporary)
-    try:
-        traction_display = 'N/A'
-        if 'joystick_controller' in globals() and getattr(joystick_controller, 'available', False) and hasattr(joystick_controller, 'getTractionValue'):
-            try:
-                tv = joystick_controller.getTractionValue()
-                traction_display = f'{float(tv):.1f}'
-            except Exception:
-                traction_display = 'err'
-        fnt = pygame.font.SysFont(None, 20)
-        txt_surf = fnt.render(f'Traction: {traction_display}', True, (10, 10, 10))
-        # small background for readability
-        pad = 6
-        bg_rect = pygame.Rect(8, 8, txt_surf.get_width() + pad, txt_surf.get_height() + pad // 2)
-        pygame.draw.rect(screen, (240, 240, 240), bg_rect)
-        pygame.draw.rect(screen, (100, 100, 100), bg_rect, 1)
-        screen.blit(txt_surf, (12, 10))
-    except Exception:
-        pass
 
 
     # Verificar colisão do player com paredes usando hitbox rotacionada
@@ -1640,6 +1804,13 @@ while running:
         ui.draw(screen, mode_text=mode_text, warning=warning)
     except Exception:
         pass
+    
+    # Desenhar menu de pausa
+    try:
+        pause_menu.draw(screen)
+    except Exception:
+        pass
+    
     pygame.display.flip()
     clock.tick(60)
     

@@ -128,7 +128,24 @@ class Player:
         return int(self._sim_traction)
     
     def setPosition(self, pos):
-        self.x, self.y = pos
+        try:
+            nx, ny = float(pos[0]), float(pos[1])
+        except Exception:
+            return
+        # If a global map_image is present, clamp the player's center so the
+        # player cannot move outside the visible map. Use half-dimensions as margin.
+        try:
+            mi = globals().get('map_image')
+            if mi is not None:
+                map_w = float(mi.get_width())
+                map_h = float(mi.get_height())
+                half_w = float(self.width) / 2.0
+                half_h = float(self.lenght) / 2.0
+                nx = min(max(nx, half_w), max(half_w, map_w - half_w))
+                ny = min(max(ny, half_h), max(half_h, map_h - half_h))
+        except Exception:
+            pass
+        self.x, self.y = nx, ny
 
     def getPosition(self):
         return (self.x, self.y)

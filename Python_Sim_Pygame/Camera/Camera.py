@@ -16,8 +16,25 @@ class Camera:
         # world_to_screen: sx = (x - offset_x) * Sscale
         # queremos sx == width/2  => offset_x = x - (width/2)/scale
         s = self.scale if hasattr(self, 'scale') and self.scale != 0 else 1.0
-        self.offset_x = player.x - (self.width / 2.0) / s
-        self.offset_y = player.y - (self.height / 2.0) / s
+        desired_x = player.x - (self.width / 2.0) / s
+        desired_y = player.y - (self.height / 2.0) / s
+
+        # If map bounds were provided (map_width/map_height in world pixels),
+        # clamp the camera so it doesn't show outside the map.
+        try:
+            max_off_x = 0
+            max_off_y = 0
+            if hasattr(self, 'map_width') and hasattr(self, 'map_height'):
+                # maximum offset such that right/bottom edges align with map
+                max_off_x = max(0.0, float(self.map_width) - (self.width / s))
+                max_off_y = max(0.0, float(self.map_height) - (self.height / s))
+            # clamp desired offsets
+            self.offset_x = min(max(desired_x, 0.0), max_off_x)
+            self.offset_y = min(max(desired_y, 0.0), max_off_y)
+        except Exception:
+            # fallback to unconstrained behavior
+            self.offset_x = desired_x
+            self.offset_y = desired_y
         self.camera_offset = [self.offset_x, self.offset_y]
 
     def apply(self, rect):
