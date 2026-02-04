@@ -145,6 +145,40 @@ class Player:
                 ny = min(max(ny, half_h), max(half_h, map_h - half_h))
         except Exception:
             pass
+        # Additionally, prevent leaving the visible screen area by using the
+        # camera projection. If the camera exists and the surface (screen)
+        # is available, clamp world position so the player's screen-projected
+        # center stays inside the surface bounds (respecting player half-size).
+        try:
+            cam = getattr(self, 'camera', None)
+            surf = getattr(self, 'surface', None)
+            if cam is not None and surf is not None and hasattr(cam, 'world_to_screen') and hasattr(cam, 'screen_to_world'):
+                s_w = float(surf.get_width())
+                s_h = float(surf.get_height())
+                # compute half-dimensions in screen space
+                scale = cam.scale if getattr(cam, 'scale', None) not in (None, 0) else 1.0
+                half_sw = (float(self.width) * scale) / 2.0
+                half_sh = (float(self.lenght) * scale) / 2.0
+
+                sx, sy = cam.world_to_screen((nx, ny))
+                min_sx = half_sw
+                max_sx = max(half_sw, s_w - half_sw)
+                min_sy = half_sh
+                max_sy = max(half_sh, s_h - half_sh)
+
+                clamped = False
+                csx = min(max(sx, min_sx), max_sx)
+                csy = min(max(sy, min_sy), max_sy)
+                if abs(csx - sx) > 1e-6 or abs(csy - sy) > 1e-6:
+                    # convert back to world coordinates
+                    try:
+                        nx, ny = cam.screen_to_world((csx, csy))
+                        clamped = True
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
         self.x, self.y = nx, ny
 
     def getPosition(self):
