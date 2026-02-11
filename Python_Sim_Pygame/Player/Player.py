@@ -349,6 +349,32 @@ class Player:
         for wheel in self.wheels:
             wheel.draw(self.surface, camera_or_offset)
 
+        # draw front arrow at center pointing to heading (top layer)
+        try:
+            sx, sy = center
+            # forward vector matches movement logic: (sin, -cos)
+            heading_rad = math.radians(self.getHeading())
+            fx = math.sin(heading_rad)
+            fy = -math.cos(heading_rad)
+            # perpendicular (right) vector
+            px = math.cos(heading_rad)
+            py = math.sin(heading_rad)
+
+            # smaller, thin red arrow moved forward so it doesn't cover center lamps
+            arrow_len = max(8, int(min(sw, sh) * 0.25))
+            shift_forward = max(10, int(arrow_len * 0.6))
+            half_w = max(2, int(arrow_len * 0.25))
+
+            tip = (int(sx + fx * (arrow_len + shift_forward)), int(sy + fy * (arrow_len + shift_forward)))
+            base_center = (int(sx + fx * shift_forward), int(sy + fy * shift_forward))
+            left = (int(base_center[0] + px * half_w), int(base_center[1] + py * half_w))
+            right = (int(base_center[0] - px * half_w), int(base_center[1] - py * half_w))
+
+            pygame.draw.polygon(self.surface, (200, 0, 0), [tip, left, right])
+            pygame.draw.polygon(self.surface, (50, 0, 0), [tip, left, right], 1)
+        except Exception:
+            pass
+
 
     def move(self, keys, speed=5):
         isChangingCourse = False
