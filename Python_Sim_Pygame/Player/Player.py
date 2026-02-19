@@ -1203,86 +1203,106 @@ class Player:
         # determine whether the icamento mode is currently active
         active = (self.curve_mode == 'icamento')
         try:
-            # UI dimensions (screen-space)
-            bar_w = 48
-            bar_h = int(screen.get_height() * 0.6)
-            padding_right = 18
-            bar_x = screen.get_width() - bar_w - padding_right
-            bar_y = screen.get_height() // 2 - bar_h // 2
+            # base sizes (relative to screen) then apply global shrink factor
+            base_bar_w = max(18, int(screen.get_width() * 0.035))
+            base_bar_h = int(screen.get_height() * 0.32)
+            shrink = 0.45  # scale everything proportionally (very small)
+            bar_w = max(8, int(base_bar_w * shrink))
+            bar_h = max(12, int(base_bar_h * shrink))
+            padding_right = max(6, int(12 * shrink))
+            spacing = max(6, int(12 * shrink))
 
-            # gray moving rectangle (background) - draw it first so yellow sits on top
-            # make the gray rect slightly narrower than the yellow bar (more subtle)
-            gray_w = max(8, bar_w - 8)
-            # gray height equal to bar_h
-            gray_h = bar_h 
-
-            # compute vertical range for gray's top position
-            # min_top: almost completely inside the yellow bar, only a small head visible
-            head_visible = max(6, int(bar_h * 0.08))
-            min_top = bar_y - head_visible
-            # apply a small downward offset to the initial position range so the
-            # gray bar starts slightly lower than before
-            offset_down = int(bar_h * 0.06)
-            min_top += offset_down
-            # max_top: half of the gray rect outside the yellow (i.e., gray top such that
-            # half the gray extends below the bar)
-            #max_top = bar_y + bar_h - (gray_h // 2) + offset_down
-
-            # interpolate top position by icamento_cursor (0..1) - only vertical movement
-            #gray_top = int(min_top + (max_top - min_top) * self.icamento_cursor)
-
-            # center gray horizontally behind the yellow bar
-            gray_x = bar_x + (bar_w // 2) - (gray_w // 2)
-
-            # draw gray background bar (static)
-            pygame.draw.rect(screen, (120, 120, 120), (gray_x, bar_y, gray_w, gray_h))
-
-            # (wheel drawing moved below so it can be rendered on top)
-
-            # draw moving yellow rectangle on top to create illusion of the gray
-            # sliding down while the yellow moves up. The yellow rect is narrower
-            # vertically and moves between min_top..max_top as icamento_cursor changes.
-            # make yellow taller so that at its lowest position it covers the gray
-            yellow_h = bar_h #max(20, min(bar_h, int(bar_h * 0.85)))
-            min_yellow_top = bar_y + bar_h - yellow_h  # bottom-aligned position
-            max_yellow_top = bar_y - int(bar_h * 0.30)  # allow moving above the bar a bit
-            # interpolate top by icamento_cursor so that increasing cursor moves yellow up
-            yellow_top = int(min_yellow_top + (max_yellow_top - min_yellow_top) * float(self.icamento_cursor))
-            yellow_x = bar_x + (bar_w // 2) - (bar_w // 2)
-
-            if active:
-                yellow_col = (220, 180, 20)
+            # If a UI manager with a panel_rect exists, position inside its top-right corner
+            ui_mgr = globals().get('ui')
+            if ui_mgr is not None and hasattr(ui_mgr, 'panel_rect') and ui_mgr.panel_rect:
+                pr = ui_mgr.panel_rect
+                try:
+                    # panel_rect might be a pygame.Rect or tuple
+                    px, py, pw, ph = (pr.x, pr.y, pr.width, pr.height) if hasattr(pr, 'x') else pr
+                except Exception:
+                    px, py, pw, ph = pr
+                # anchor to top-right inside panel with small top padding
+                anchor_x = px + pw - padding_right - bar_w
+                # push the UI down further from the very top of the panel
+                anchor_y = py + max(6, int(8 * shrink)) + int(80 * shrink)
+                bar_x_r = anchor_x
+                bar_x_l = bar_x_r - bar_w - spacing
+                bar_y = anchor_y
             else:
-                yellow_col = (120, 100, 12)
-            pygame.draw.rect(screen, yellow_col, (bar_x, yellow_top, bar_w, yellow_h))
+                # fallback: use screen top-right
+                bar_x_r = screen.get_width() - bar_w - padding_right
+                bar_x_l = bar_x_r - bar_w - spacing
+                # fallback: also lower more when anchored to screen top
+                bar_y = max(6, int(8 * shrink)) + int(80 * shrink)
 
-            # Mostra valor percentual ao lado da barra (apenas se ativo)
+            gray_w = max(6, bar_w - 6)
+            gray_h = bar_h
+
+            # compute yellow vertical position by cursor
+            min_yellow_top = bar_y + bar_h - bar_h
+            max_yellow_top = bar_y - int(bar_h * 0.28)
+            yellow_top = int(min_yellow_top + (max_yellow_top - min_yellow_top) * float(self.icamento_cursor))
+
+            # draw gray backgrounds
+            gray_x_l = bar_x_l + (bar_w // 2) - (gray_w // 2)
+            gray_x_r = bar_x_r + (bar_w // 2) - (gray_w // 2)
+            pygame.draw.rect(screen, (120, 120, 120), (gray_x_l, bar_y, gray_w, gray_h))
+            pygame.draw.rect(screen, (120, 120, 120), (gray_x_r, bar_y, gray_w, gray_h))
+
+            # draw yellow (active or dimmed)
+            yellow_col = (220, 180, 20) if active else (120, 100, 12)
+            pygame.draw.rect(screen, yellow_col, (bar_x_l, yellow_top, bar_w, bar_h))
+            pygame.draw.rect(screen, yellow_col, (bar_x_r, yellow_top, bar_w, bar_h))
+
+            # fixed wheels at base of both gray bars (unchanging, drawn on top)
             try:
-                    percent = int(self.icamento_cursor * 500)
-                    f = pygame.font.SysFont(None, 22)
-                    color = (40, 200, 40) if active else (120, 120, 120)
-                    txt = f.render(f'{percent} mm', True, color)
-                    tx = bar_x - txt.get_width() - 12
-                    ty = bar_y + bar_h - txt.get_height() + 16
-                    screen.blit(txt, (tx, ty))
-                    # indicador READY permanece apenas quando ativo
-                    if active and self.icamento_cursor >= 0.8:
-                        f2 = pygame.font.SysFont(None, 18)
-                        txt2 = f2.render('ICAMENTO READY', True, (40, 200, 40))
-                        tx2 = bar_x - txt2.get_width() - 8
-                        ty2 = bar_y + bar_h - txt2.get_height() - 8
-                        screen.blit(txt2, (tx2, ty2))
-                    # draw fixed wheel on top of the yellow bar and move it 20px up
-                    try:
-                        wheel_outer_r = max(18, int(bar_w * 0.75))
-                        wheel_inner_r = max(9, int(wheel_outer_r * 0.55))
-                        wheel_cx = gray_x + (gray_w // 2)
-                        # place wheel tangent to the bottom of the gray bar, shifted up 20px
-                        wheel_cy = bar_y + gray_h + wheel_outer_r - 20
-                        pygame.draw.circle(screen, (0, 0, 0), (wheel_cx, wheel_cy), wheel_outer_r)
-                        pygame.draw.circle(screen, (160, 160, 160), (wheel_cx, wheel_cy), wheel_inner_r)
-                    except Exception:
-                        pass
+                wheel_outer_r = max(8, int(bar_w * 0.55))
+                wheel_inner_r = max(4, int(wheel_outer_r * 0.55))
+                # compute a small extra downward offset so wheels sit lower
+                # remove extra downward offset and apply small upward nudge
+                extra_down = 0
+                small_up = max(0, int(6 * shrink))
+                # right wheel
+                wheel_cx_r = gray_x_r + (gray_w // 2)
+                wheel_cy_r = bar_y + gray_h + wheel_outer_r - small_up
+                pygame.draw.circle(screen, (0, 0, 0), (wheel_cx_r, wheel_cy_r), wheel_outer_r)
+                pygame.draw.circle(screen, (160, 160, 160), (wheel_cx_r, wheel_cy_r), wheel_inner_r)
+                # left wheel (clone)
+                wheel_cx_l = gray_x_l + (gray_w // 2)
+                wheel_cy_l = bar_y + gray_h + wheel_outer_r - small_up
+                pygame.draw.circle(screen, (0, 0, 0), (wheel_cx_l, wheel_cy_l), wheel_outer_r)
+                pygame.draw.circle(screen, (160, 160, 160), (wheel_cx_l, wheel_cy_l), wheel_inner_r)
+            except Exception:
+                pass
+
+            # horizontal connector bar that links the tops of the two yellow bars
+            try:
+                # thicker connector that spans from left bar left edge to right bar right edge
+                conn_h = max(6, int(bar_w * 0.5))
+                conn_left = bar_x_l
+                conn_right = bar_x_r + bar_w
+                conn_width = max(1, int(conn_right - conn_left))
+                # y coordinate that connects the tops (use current yellow_top)
+                conn_y = yellow_top - (conn_h // 2)
+                pygame.draw.rect(screen, yellow_col, (conn_left, conn_y, conn_width, conn_h))
+            except Exception:
+                pass
+
+            # percent and READY to left of left bar
+            try:
+                percent = int(self.icamento_cursor * 500)
+                f = pygame.font.SysFont(None, 16)
+                color = (40, 200, 40) if active else (120, 120, 120)
+                txt = f.render(f'{percent} mm', True, color)
+                tx = bar_x_l - txt.get_width() - 8
+                ty = bar_y + bar_h - txt.get_height() - 4
+                screen.blit(txt, (tx, ty))
+                if active and self.icamento_cursor >= 0.8:
+                    f2 = pygame.font.SysFont(None, 14)
+                    txt2 = f2.render('ICAMENTO READY', True, (40, 200, 40))
+                    tx2 = bar_x_l - txt2.get_width() - 8
+                    ty2 = bar_y + bar_h - txt2.get_height() - 18
+                    screen.blit(txt2, (tx2, ty2))
             except Exception:
                 pass
         except Exception:
