@@ -22,9 +22,12 @@ class UIManager:
         if panel_rect is None:
             sw, sh = screen.get_width(), screen.get_height()
             self.panel_rect = pygame.Rect(8, 100, 260, 70)
-            # debug print removed
+            self._explicit_panel_y = False
         else:
             self.panel_rect = pygame.Rect(panel_rect)
+            # When caller provided a panel_rect, treat its y as explicit and keep it across
+            # fullscreen toggles to preserve visual alignment expected in windowed mode.
+            self._explicit_panel_y = True
         # Image display settings: external system will send IDs like '0C' -> file 'img_0C.bmp'
         # Default image directory is `ui/screens/screens_png` next to this file.
         try:
@@ -439,10 +442,16 @@ class UIManager:
         except Exception:
             self._panel_y_ratio = 0.75
 
-        # apply the ratio to compute current y (keeps same relative position in fullscreen)
+        # Preserve the stored vertical ratio only when the panel y was not explicitly
+        # provided by the caller. If the caller set `panel_rect` we respect that y
+        # so the panel remains visually identical in windowed and fullscreen modes.
         try:
-            if sh:
-                self.panel_rect.y = int(sh * self._panel_y_ratio)
+            if not getattr(self, '_explicit_panel_y', False):
+                if sh and getattr(self, '_panel_y_ratio', None) is not None:
+                    try:
+                        self.panel_rect.y = int(sh * self._panel_y_ratio)
+                    except Exception:
+                        pass
         except Exception:
             pass
 
@@ -483,11 +492,10 @@ class UIManager:
                                 img = pygame.transform.smoothscale(img, target_size)
                             else:
                                 img = pygame.transform.scale(img, target_size)
-                        # position image at bottom-center of the panel with padding
+                        # Position image as in windowed mode: bottom-centered inside panel.
                         dx = self.panel_rect.x + (self.panel_rect.width - img.get_width()) // 2
                         bottom_pad = 12
                         dy = self.panel_rect.y + self.panel_rect.height - img.get_height() - bottom_pad
-                        # clamp to top padding if image is taller than available area
                         if dy < self.panel_rect.y + 6:
                             dy = self.panel_rect.y + 6
                         surf.blit(img, (dx, dy))

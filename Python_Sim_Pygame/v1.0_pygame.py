@@ -474,20 +474,30 @@ def toggle_fullscreen():
             ui_obj = globals().get('ui')
             if ui_obj is not None:
                 new_w, new_h = screen.get_width(), screen.get_height()
-                # UIManager: preserve position relative to screen using proportional mapping
+                # UIManager: preserve position. If the UI manager provided its own
+                # panel_rect (explicit y), keep that y and only anchor to the right
+                # in the new resolution; otherwise map previous ratios.
                 try:
                     if hasattr(ui_obj, 'panel_rect'):
                         pr = ui_obj.panel_rect
-                        # compute previous position ratios relative to old screen
                         try:
-                            rx = pr.x / float(old_w) if old_w > 0 else 0.0
-                            ry = pr.y / float(old_h) if old_h > 0 else 0.0
+                            if getattr(ui_obj, '_explicit_panel_y', False):
+                                # keep the explicit y (clamp into bounds) and anchor to right
+                                pr.x = int(max(0, min(new_w - pr.width, new_w - pr.width)))
+                                pr.y = int(max(0, min(new_h - pr.height, pr.y)))
+                            else:
+                                # compute previous position ratios relative to old screen
+                                try:
+                                    rx = pr.x / float(old_w) if old_w > 0 else 0.02
+                                    ry = pr.y / float(old_h) if old_h > 0 else 0.75
+                                except Exception:
+                                    rx = 0.02
+                                    ry = 0.75
+                                # map to new screen keeping same pixel size
+                                pr.x = int(max(0, min(new_w - pr.width, round(rx * new_w))))
+                                pr.y = int(max(0, min(new_h - pr.height, round(ry * new_h))))
                         except Exception:
-                            rx = 0.02
-                            ry = 0.75
-                        # map to new screen keeping same pixel size
-                        pr.x = int(max(0, min(new_w - pr.width, round(rx * new_w))))
-                        pr.y = int(max(0, min(new_h - pr.height, round(ry * new_h))))
+                            pass
                         ui_obj.panel_rect = pr
                     if hasattr(ui_obj, 'screen'):
                         ui_obj.screen = screen
