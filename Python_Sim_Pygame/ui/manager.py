@@ -455,11 +455,14 @@ class UIManager:
         except Exception:
             pass
 
-        # ensure panel x stays within the surface (preserve caller-set x, clamp to bounds)
+        # Anchor panel to the right edge so the UI bar and image area align
         try:
-            self.panel_rect.x = int(min(max(self.panel_rect.x, 0), max(0, sw - self.panel_rect.width)))
+            self.panel_rect.x = int(max(0, sw - self.panel_rect.width))
         except Exception:
-            pass
+            try:
+                self.panel_rect.x = int(min(max(self.panel_rect.x, 0), max(0, sw - self.panel_rect.width)))
+            except Exception:
+                pass
         # If we're in image-only mode, either draw the current image (scaled)
         # or draw a visible placeholder and skip legacy UI drawing.
         if self.image_only:

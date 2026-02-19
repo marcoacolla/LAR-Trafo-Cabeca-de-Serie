@@ -482,9 +482,9 @@ def toggle_fullscreen():
                         pr = ui_obj.panel_rect
                         try:
                             if getattr(ui_obj, '_explicit_panel_y', False):
-                                # keep the explicit y (clamp into bounds) and anchor to right
+                                # keep the explicit y anchored to the bottom of the screen
                                 pr.x = int(max(0, min(new_w - pr.width, new_w - pr.width)))
-                                pr.y = int(max(0, min(new_h - pr.height, pr.y)))
+                                pr.y = int(max(0, new_h - pr.height))
                             else:
                                 # compute previous position ratios relative to old screen
                                 try:
@@ -640,17 +640,26 @@ if UIManager is not None:
         panel_rect = (8, SCREEN_H - 120, 320, 100)
     # place the UI manager inside the reserved right-side bar
     try:
-        sw, sh = screen.get_size()
-        ui_panel_rect = (sw - PANEL_WIDTH, 0, PANEL_WIDTH, sh)
+        try:
+            sw, sh = screen.get_size()
+        except Exception:
+            sw, sh = SCREEN_W, SCREEN_H
+        # Place a compact panel anchored to the bottom of the right-side bar
+        panel_h = 120
+        ui_panel_rect = (sw - PANEL_WIDTH, max(0, sh - panel_h), PANEL_WIDTH, panel_h)
     except Exception:
-        ui_panel_rect = panel_rect
+        panel_h = 120
+        ui_panel_rect = (SCREEN_W - PANEL_WIDTH, max(0, SCREEN_H - panel_h), PANEL_WIDTH, panel_h)
     ui = UIManager(screen, panel_rect=ui_panel_rect, player=player)
 else:
     # fallback: older SidePanel on the right
-    sw, sh = screen.get_size()
+    try:
+        sw, sh = screen.get_size()
+    except Exception:
+        sw, sh = SCREEN_W, SCREEN_H
     panel_x = sw - PANEL_WIDTH
     panel_y = 0
-    panel_h = sh
+    panel_h = max(64, sh - panel_y)
     panel_w = PANEL_WIDTH
     ui = SidePanel(panel_x, panel_y, panel_w, panel_h, layout='horizontal')
 
