@@ -152,10 +152,12 @@ class SidePanel:
             content_w = min(max_width, max(t.get_width(), max_row_w) + 24)
             content_h = t.get_height() + 8 + rows * row_height + (rows - 1) * pad_y + 16
 
-        # place content box at the bottom left of the screen
+        # place content box near bottom-right inside the side panel
         surf_w, surf_h = surf.get_width(), surf.get_height()
-        # sobe o painel mais para cima (ex: 48 pixels do fundo ao invés de 16)
-        content_rect = pygame.Rect(8, surf_h - content_h - 48, content_w, content_h)
+        # raise a bit (20px) and move to the right inside the reserved side panel
+        x = max(8, self.rect.right - content_w - 12)
+        y = max(8, surf_h - content_h - 68)
+        content_rect = pygame.Rect(x, y, content_w, content_h)
         # fundo branco
         pygame.draw.rect(surf, (255, 255, 255), content_rect)
         # borda vermelha grossa
@@ -705,6 +707,14 @@ else:
 #   - The can_movement_value replaces the left joystick Y-axis (forward/backward)
 can_movement_value = 0  # 0 to 60000
 
+# ==================== CONTROLE TEMPORÁRIO DAS ALAVANCAS (TESTE) ====================
+# Posições das alavancas controladas pelo teclado para testar
+# 0 = esquerda/cima (diagonal/lenta)
+# 1 = centro (neutro - straight/média)
+# 2 = direita/baixo (pivotal/rápida)
+lever_mode_position = 1     # Alavanca de modo: começa neutra
+lever_speed_position = 1    # Alavanca de velocidade: começa neutra
+
 # ==================== ACELERÔMETRO / INCLINAÇÃO ====================
 # Simula o acelerômetro baseado em tons vermelhos do mapa
 # 0 = reto, 6000 = 90 graus de inclinação
@@ -1151,6 +1161,21 @@ while running:
                 player.set_speed_mode('lenta')
             except Exception:
                 pass
+        
+        # ========== CONTROLE VISUAL DAS ALAVANCAS (TECLADO) ==========
+        # Apenas controla a POSIÇÃO VISUAL das alavancas (sem efeito no jogo)
+        # Esquerda/Direita = Posição da Alavanca Horizontal
+        # Cima/Baixo = Posição da Alavanca Vertical
+        
+        if keys[pygame.K_LEFT] and not prev_keys[pygame.K_LEFT]:
+            lever_mode_position = max(0, lever_mode_position - 1)
+        if keys[pygame.K_RIGHT] and not prev_keys[pygame.K_RIGHT]:
+            lever_mode_position = min(2, lever_mode_position + 1)
+        if keys[pygame.K_UP] and not prev_keys[pygame.K_UP]:
+            lever_speed_position = max(0, lever_speed_position - 1)
+        if keys[pygame.K_DOWN] and not prev_keys[pygame.K_DOWN]:
+            lever_speed_position = min(2, lever_speed_position + 1)
+        
         # Abrir/fechar menu de pausa com P (tecla dedicada)
         if keys[pygame.K_p] and not prev_keys[pygame.K_p] and not pause_menu.is_open:
             pause_menu.open()
@@ -1323,16 +1348,16 @@ while running:
         shadow_rect = ui_rect.move(4, 4)
         try:
             shadow_surf = pygame.Surface((shadow_rect.width, shadow_rect.height), pygame.SRCALPHA)
-            shadow_surf.fill((0, 0, 0, 48))
+            shadow_surf.fill((0, 0, 0, 72))
             screen.blit(shadow_surf, (shadow_rect.x, shadow_rect.y))
         except Exception:
-            pygame.draw.rect(screen, (210, 215, 225), shadow_rect)
+            pygame.draw.rect(screen, (70, 78, 92), shadow_rect)
         # main background and subtle border
-        pygame.draw.rect(screen, (235, 245, 255), ui_rect)  # bluish-white
-        pygame.draw.rect(screen, (170, 185, 200), ui_rect, 2)
+        pygame.draw.rect(screen, (92, 104, 122), ui_rect)  # darker bluish-gray
+        pygame.draw.rect(screen, (130, 148, 172), ui_rect, 2)
         # stronger outline to make it visually distinct
         outline_rect = ui_rect.inflate(2, 2)
-        pygame.draw.rect(screen, (150, 160, 175), outline_rect, 1)
+        pygame.draw.rect(screen, (58, 68, 84), outline_rect, 1)
     except Exception:
         pass
 

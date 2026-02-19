@@ -1296,6 +1296,10 @@ class Player:
                 txt = f.render(f'{percent} mm', True, color)
                 tx = bar_x_l - txt.get_width() - 8
                 ty = bar_y + bar_h - txt.get_height() - 4
+                # black outline around the mm text for better contrast
+                for ox, oy in [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]:
+                    outline_txt = f.render(f'{percent} mm', True, (0, 0, 0))
+                    screen.blit(outline_txt, (tx + ox, ty + oy))
                 screen.blit(txt, (tx, ty))
                 if active and self.icamento_cursor >= 0.8:
                     f2 = pygame.font.SysFont(None, 14)

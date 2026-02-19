@@ -1,5 +1,6 @@
 import pygame
 import os
+import math
 from .screens.screen_base import ScreenBase
 
 class UIManager:
@@ -234,6 +235,222 @@ class UIManager:
             return []
         return self.screens[self.current].get('options', [])
 
+    def _get_mode_selector_index(self):
+        """Return selector index for current player mode.
+
+        0: straight/curve, 1: diagonal, 2: pivotal, 3: icamento
+        """
+        try:
+            mode = str(getattr(self.player, 'curve_mode', 'straight')).lower()
+        except Exception:
+            mode = 'straight'
+
+        if mode in ('straight', 'curve'):
+            return 0
+        if mode == 'diagonal':
+            return 1
+        if mode == 'pivotal':
+            return 2
+        if mode == 'icamento':
+            return 3
+        return 0
+
+    def _draw_mode_selector(self, surf):
+        """Draw a potentiometer-like circular mode selector in the side panel."""
+        try:
+            panel = self.panel_rect
+            # move selector a bit up and to the left in the side panel
+            cx = panel.x + 72
+            cy = panel.y + 22
+            radius = 20
+
+            # base circle: black body + subtle white outline
+            pygame.draw.circle(surf, (0, 0, 0), (cx, cy), radius)
+            pygame.draw.circle(surf, (255, 255, 255), (cx, cy), radius, 2)
+
+            # four options distributed left->right over the upper half of the circle
+            # index mapping:
+            # 0=straight/curve, 1=diagonal(deslizamento), 2=pivotal, 3=icamento
+            angles_deg = [180, 120, 60, 0]
+            detents = []
+            arc_r = radius + 10
+            for ang in angles_deg:
+                a = math.radians(ang)
+                ox = int(round(math.cos(a) * arc_r))
+                oy = int(round(-math.sin(a) * arc_r))
+                detents.append((ox, oy))
+
+            selected = self._get_mode_selector_index()
+
+            for idx, (ox, oy) in enumerate(detents):
+                dot_x = cx + ox
+                dot_y = cy + oy
+                if idx == selected:
+                    pygame.draw.circle(surf, (255, 255, 255), (dot_x, dot_y), 5)
+                else:
+                    pygame.draw.circle(surf, (185, 185, 185), (dot_x, dot_y), 3)
+
+            # pointer with black outline + white inner line
+            tx = cx + int(detents[selected][0] * 0.75)
+            ty = cy + int(detents[selected][1] * 0.75)
+            pygame.draw.line(surf, (0, 0, 0), (cx, cy), (tx, ty), 5)
+            pygame.draw.line(surf, (255, 255, 255), (cx, cy), (tx, ty), 3)
+            pygame.draw.circle(surf, (0, 0, 0), (cx, cy), 4)
+            pygame.draw.circle(surf, (255, 255, 255), (cx, cy), 2)
+        except Exception:
+            pass
+
+    def _get_speed_selector_index(self):
+        """Return selector index for current speed mode.
+
+        0: lenta, 1: média/normal, 2: rápida
+        """
+        try:
+            speed_mode = str(getattr(self.player, 'speed_mode', 'média')).lower()
+        except Exception:
+            speed_mode = 'média'
+
+        if speed_mode in ('lenta', 'slow'):
+            return 0
+        if speed_mode in ('rápida', 'rapida', 'fast'):
+            return 2
+        return 1
+
+    def _draw_speed_selector(self, surf):
+        """Draw a cloned selector for speed, placed to the right."""
+        try:
+            panel = self.panel_rect
+            # positioned to the right of the mode selector
+            cx = panel.x + 202
+            cy = panel.y + 22
+            radius = 20
+
+            # base circle: black body + white outline
+            pygame.draw.circle(surf, (0, 0, 0), (cx, cy), radius)
+            pygame.draw.circle(surf, (255, 255, 255), (cx, cy), radius, 2)
+
+            # 3 options on upper half: left=slow, middle=normal, right=fast
+            angles_deg = [180, 90, 0]
+            detents = []
+            arc_r = radius + 10
+            for ang in angles_deg:
+                a = math.radians(ang)
+                ox = int(round(math.cos(a) * arc_r))
+                oy = int(round(-math.sin(a) * arc_r))
+                detents.append((ox, oy))
+
+            selected = self._get_speed_selector_index()
+
+            for idx, (ox, oy) in enumerate(detents):
+                dot_x = cx + ox
+                dot_y = cy + oy
+                if idx == selected:
+                    pygame.draw.circle(surf, (255, 255, 255), (dot_x, dot_y), 5)
+                else:
+                    pygame.draw.circle(surf, (185, 185, 185), (dot_x, dot_y), 3)
+
+            # symbols for differentiation: left='-', middle='o', right='+'
+            sym_font = pygame.font.SysFont(None, 18)
+            symbols = ['-', 'o', '+']
+            for idx, (ox, oy) in enumerate(detents):
+                sx = cx + int(ox * 1.28)
+                sy = cy + int(oy * 1.28)
+                text = sym_font.render(symbols[idx], True, (235, 235, 235))
+                rect = text.get_rect(center=(sx, sy))
+                surf.blit(text, rect.topleft)
+
+            # pointer with black outline + white inner line
+            tx = cx + int(detents[selected][0] * 0.75)
+            ty = cy + int(detents[selected][1] * 0.75)
+            pygame.draw.line(surf, (0, 0, 0), (cx, cy), (tx, ty), 5)
+            pygame.draw.line(surf, (255, 255, 255), (cx, cy), (tx, ty), 3)
+            pygame.draw.circle(surf, (0, 0, 0), (cx, cy), 4)
+            pygame.draw.circle(surf, (255, 255, 255), (cx, cy), 2)
+        except Exception:
+            pass
+
+    def _draw_mode_lever(self, surf):
+        """Draw a horizontal mechanical lever above the mode selector.
+        
+        3 positions: left, center (neutral), right
+        Controlled by arrow keys (LEFT/RIGHT), independent of game state
+        """
+        try:
+            import sys
+            # Get the main module (where v1.0_pygame.py runs)
+            main_module = sys.modules.get('__main__')
+            lever_position = getattr(main_module, 'lever_mode_position', 1) if main_module else 1
+            
+            panel = self.panel_rect
+            cx = panel.x + 72
+            cy = panel.y + 22 - 65  # offset up from selector
+            
+            # Alavanca horizontal: LEFT (0), CENTER (1), RIGHT (2)
+            if lever_position == 0:
+                offset_x = -32  # left
+            elif lever_position == 2:
+                offset_x = 32   # right
+            else:
+                offset_x = 0    # center (neutral)
+            
+            ex = cx + offset_x
+            ey = cy  # sem movimento vertical
+            
+            # Lever bar with black outline
+            pygame.draw.line(surf, (0, 0, 0), (cx, cy), (ex, ey), 7)
+            pygame.draw.line(surf, (200, 200, 200), (cx, cy), (ex, ey), 5)
+            
+            # Pivot point (center)
+            pygame.draw.circle(surf, (0, 0, 0), (cx, cy), 7)
+            pygame.draw.circle(surf, (200, 200, 200), (cx, cy), 4)
+            
+            # Knob at lever end
+            pygame.draw.circle(surf, (0, 0, 0), (ex, ey), 6)
+            pygame.draw.circle(surf, (220, 220, 220), (ex, ey), 3)
+        except Exception:
+            pass
+
+    def _draw_speed_lever(self, surf):
+        """Draw a vertical mechanical lever above the speed selector.
+        
+        3 positions: up, center (neutral), down
+        Controlled by arrow keys (UP/DOWN), independent of game state
+        """
+        try:
+            import sys
+            # Get the main module (where v1.0_pygame.py runs)
+            main_module = sys.modules.get('__main__')
+            lever_position = getattr(main_module, 'lever_speed_position', 1) if main_module else 1
+            
+            panel = self.panel_rect
+            cx = panel.x + 202
+            cy = panel.y + 22 - 65  # offset up from selector
+            
+            # Alavanca vertical: UP (0), CENTER (1), DOWN (2)
+            if lever_position == 0:
+                offset_y = -32  # up
+            elif lever_position == 2:
+                offset_y = 32   # down
+            else:
+                offset_y = 0    # center (neutral)
+            
+            ex = cx  # sem movimento horizontal
+            ey = cy + offset_y
+            
+            # Lever bar with black outline
+            pygame.draw.line(surf, (0, 0, 0), (cx, cy), (ex, ey), 7)
+            pygame.draw.line(surf, (200, 200, 200), (cx, cy), (ex, ey), 5)
+            
+            # Pivot point (center)
+            pygame.draw.circle(surf, (0, 0, 0), (cx, cy), 7)
+            pygame.draw.circle(surf, (200, 200, 200), (cx, cy), 4)
+            
+            # Knob at lever end
+            pygame.draw.circle(surf, (0, 0, 0), (ex, ey), 6)
+            pygame.draw.circle(surf, (220, 220, 220), (ex, ey), 3)
+        except Exception:
+            pass
+
     # --- Joystick helpers -------------------------------------------------
     def set_joystick_button_map(self, mapping):
         """Set joystick button -> action mapping.
@@ -463,6 +680,15 @@ class UIManager:
                 self.panel_rect.x = int(min(max(self.panel_rect.x, 0), max(0, sw - self.panel_rect.width)))
             except Exception:
                 pass
+        # Draw mode selector (potentiometer-like) in the side panel.
+        try:
+            self._draw_mode_selector(surf)
+            self._draw_speed_selector(surf)
+            self._draw_mode_lever(surf)
+            self._draw_speed_lever(surf)
+        except Exception:
+            pass
+
         # If we're in image-only mode, either draw the current image (scaled)
         # or draw a visible placeholder and skip legacy UI drawing.
         if self.image_only:
