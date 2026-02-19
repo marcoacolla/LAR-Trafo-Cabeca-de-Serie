@@ -590,6 +590,7 @@ if found:
 else:
     SPAWN_POINT = (200, 200)
 
+# reserve game viewport width (window keeps same total size)
 camera = Camera(SCREEN_W, SCREEN_H)
 player = Player(SPAWN_POINT, screen, camera)
 # inform camera about map bounds so it can clamp offsets to map extents
@@ -627,7 +628,13 @@ if UIManager is not None:
         panel_rect = (8, sh - 120, 320, 100)
     except Exception:
         panel_rect = (8, SCREEN_H - 120, 320, 100)
-    ui = UIManager(screen, panel_rect=panel_rect, player=player)
+    # place the UI manager inside the reserved right-side bar
+    try:
+        sw, sh = screen.get_size()
+        ui_panel_rect = (sw - PANEL_WIDTH, 0, PANEL_WIDTH, sh)
+    except Exception:
+        ui_panel_rect = panel_rect
+    ui = UIManager(screen, panel_rect=ui_panel_rect, player=player)
 else:
     # fallback: older SidePanel on the right
     sw, sh = screen.get_size()
@@ -1287,6 +1294,29 @@ while running:
     else:
         screen.blit(map_image, (-camera.offset_x, -camera.offset_y))
 
+    # Draw right-side UI bar (bluish-white background) that hosts the UI
+    try:
+        sw = screen.get_width()
+        sh = screen.get_height()
+        ui_x = max(0, sw - PANEL_WIDTH)
+        ui_rect = pygame.Rect(ui_x, 0, PANEL_WIDTH, sh)
+        # drop shadow: draw a slightly offset darker rect behind
+        shadow_rect = ui_rect.move(4, 4)
+        try:
+            shadow_surf = pygame.Surface((shadow_rect.width, shadow_rect.height), pygame.SRCALPHA)
+            shadow_surf.fill((0, 0, 0, 48))
+            screen.blit(shadow_surf, (shadow_rect.x, shadow_rect.y))
+        except Exception:
+            pygame.draw.rect(screen, (210, 215, 225), shadow_rect)
+        # main background and subtle border
+        pygame.draw.rect(screen, (235, 245, 255), ui_rect)  # bluish-white
+        pygame.draw.rect(screen, (170, 185, 200), ui_rect, 2)
+        # stronger outline to make it visually distinct
+        outline_rect = ui_rect.inflate(2, 2)
+        pygame.draw.rect(screen, (150, 160, 175), outline_rect, 1)
+    except Exception:
+        pass
+
 
     # Verificar colisão do player com paredes usando hitbox rotacionada
     # Obtemos dois polígonos: um em coordenadas de tela para debug, e outro em
@@ -1760,7 +1790,7 @@ while running:
             # permissive death: show a non-blocking overlay but allow movement.
             try:
                 fonte = pygame.font.SysFont(None, 48)
-                texto = fonte.render('Você morreu! (modo permissivo) Mova para sair.', True, (255, 0, 0))
+                texto = fonte.render('Colisão Detectada! Mova para sair.', True, (255, 0, 0))
                 # semi-transparent background
                 bg_w = texto.get_width() + 40
                 bg_h = texto.get_height() + 24

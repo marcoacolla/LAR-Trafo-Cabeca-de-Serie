@@ -62,7 +62,7 @@ class Camera:
     
     def death_screen(self, screen, player, reset_callback):
         fonte = pygame.font.SysFont(None, 60)
-        texto = fonte.render('Você morreu! Pressione R para reiniciar', True, (255, 0, 0))
+        texto = fonte.render('Colisão Detectada! Pressione R para reiniciar', True, (255, 0, 0))
         # Use event.pump() + key polling to avoid pygame.event.get() internal
         # conversion errors which on some systems raise SystemError(KeyError).
         while player.is_dead():

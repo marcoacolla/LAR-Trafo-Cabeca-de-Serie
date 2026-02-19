@@ -446,9 +446,9 @@ class UIManager:
         except Exception:
             pass
 
-        # center panel horizontally on the current surface so images are centered
+        # ensure panel x stays within the surface (preserve caller-set x, clamp to bounds)
         try:
-            self.panel_rect.x = (sw - self.panel_rect.width) // 2
+            self.panel_rect.x = int(min(max(self.panel_rect.x, 0), max(0, sw - self.panel_rect.width)))
         except Exception:
             pass
         # If we're in image-only mode, either draw the current image (scaled)
@@ -483,9 +483,13 @@ class UIManager:
                                 img = pygame.transform.smoothscale(img, target_size)
                             else:
                                 img = pygame.transform.scale(img, target_size)
-                        # center image inside panel
+                        # position image at bottom-center of the panel with padding
                         dx = self.panel_rect.x + (self.panel_rect.width - img.get_width()) // 2
-                        dy = self.panel_rect.y + (self.panel_rect.height - img.get_height()) // 2
+                        bottom_pad = 12
+                        dy = self.panel_rect.y + self.panel_rect.height - img.get_height() - bottom_pad
+                        # clamp to top padding if image is taller than available area
+                        if dy < self.panel_rect.y + 6:
+                            dy = self.panel_rect.y + 6
                         surf.blit(img, (dx, dy))
                     except Exception:
                         try:
