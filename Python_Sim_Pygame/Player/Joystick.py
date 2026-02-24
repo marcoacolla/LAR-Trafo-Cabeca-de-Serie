@@ -179,7 +179,6 @@ class Joystick:
                 data=data,
                 is_extended_id=True
             )
-
             self.bus.send(msg, timeout=0.01)
             return True
         except Exception as e:

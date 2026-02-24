@@ -719,7 +719,7 @@ lever_speed_position = 1    # Alavanca de velocidade: começa neutra
 # Simula o acelerômetro baseado em tons vermelhos do mapa
 # 0 = reto, 6000 = 90 graus de inclinação
 # Configurações editáveis
-ACCELEROMETER_MAX_VALUE = 6000  # máximo valor do acelerômetro (simula 90 graus)
+ACCELEROMETER_MAX_VALUE = 90  # máximo valor do acelerômetro (simula 90 graus)
 ACCELEROMETER_RED_MIN_DIFF = 80  # diferença mínima entre R e max(G,B) para detectar vermelho
 ACCELEROMETER_GB_MAX_DIFF = 30   # diferença máxima entre G e B (para G e B serem "iguais")
 ACCELEROMETER_SAMPLES = 4  # número de pontos ao redor do robô para amostrar (4 cantos da base)
@@ -1322,6 +1322,9 @@ while running:
     # Atualiza acelerômetro (valor simulado baseado em tons vermelhos do mapa)
     try:
         current_accelerometer_value = calculate_accelerometer_value()
+        # Envia valor do acelerômetro via CAN se joystick estiver disponível
+        if getattr(joystick_controller, 'available', False) and hasattr(joystick_controller, 'send_inclinometer'):
+            joystick_controller.send_inclinometer(current_accelerometer_value)
     except Exception:
         current_accelerometer_value = 0
 
