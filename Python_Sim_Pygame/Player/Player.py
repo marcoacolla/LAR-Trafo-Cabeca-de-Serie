@@ -69,7 +69,8 @@ class Player:
 
         self.setMode("straight")
         # icamento cursor (0.0..1.0) used by the special 'icamento' mode UI
-        self.icamento_cursor = 0.5
+        # Default changed to 0.0 so icamento starts at 0 mm
+        self.icamento_cursor = 0.0
         # Traction simulation state
         self._last_sim_pos = None
         self._sim_traction = 0
@@ -273,6 +274,8 @@ class Player:
         # Dimensões da barra (largura x altura)
         BAR_WIDTH = 7  # comprimento da barra
         BAR_HEIGHT = 20  # espessura da barra
+        OUTLINE_COLOR = (0, 0, 0)
+        OUTLINE_WIDTH = 1
 
         cx, cy = self.getPosition()
 
@@ -301,6 +304,7 @@ class Player:
                 BAR_WIDTH = size
             bar_surf = pygame.Surface((BAR_WIDTH, BAR_HEIGHT), pygame.SRCALPHA)
             pygame.draw.rect(bar_surf, colorToUse, (0, 0, BAR_WIDTH, BAR_HEIGHT))
+            pygame.draw.rect(bar_surf, OUTLINE_COLOR, (0, 0, BAR_WIDTH, BAR_HEIGHT), OUTLINE_WIDTH)
 
             # Rotaciona a barra conforme o heading
             rotated_bar = pygame.transform.rotate(bar_surf, -self.getHeading())

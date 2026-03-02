@@ -1,6 +1,7 @@
 import pygame
 import math
 from World.World import World as world
+from World.Dialogue import DialogueManager
 import os
 from Player.Player import Player
 from Camera.Camera import Camera
@@ -540,6 +541,14 @@ if 'selected_map_path' in globals() and selected_map_path:
 else:
     map_path = os.path.join(os.path.dirname(__file__), 'World', 'Obstacles', 'Map1.png')
 map_image = pygame.image.load(map_path).convert()
+
+# Dialogue/EventMap manager (loads optional matching map from World/EventMap)
+dialogue_manager = DialogueManager(
+    project_root=os.path.dirname(__file__),
+    obstacle_map_path=map_path,
+    obstacle_map_size=map_image.get_size(),
+    phase='t_inclometro',
+)
 
 
 # Lightweight: find a green pixel (centroid of green area) to use as spawn and to ignore in collisions
@@ -1297,18 +1306,63 @@ while running:
         except Exception:
             player.move(keys, speed=move_speed)
 
+    # EventMap (optional): process dialogue zones in the hidden event map.
+    try:
+        if dialogue_manager.enabled and hasattr(player, 'get_body_polygon'):
+            dialogue_manager.process_player_polygon(player.get_body_polygon(), auto_print=False)
+    except Exception:
+        pass
+
     # Atualiza acelerômetro (valor simulado baseado em tons vermelhos do mapa)
+    # e aplica alertas visuais (inclinação + içamento)
     try:
         current_accelerometer_value = calculate_accelerometer_value()
-        # Alertas visuais por inclinação:
-        # > 25  -> crítico (vermelho piscando)
-        # > 15  -> alerta  (amarelo piscando)
+
+        # Escolhe o alerta mais severo entre as regras ativas.
+        # Criticidade: critico > alerta. Em empate de criticidade, usa maior Hz.
+        chosen_mode = None
+        chosen_hz = 0.0
+        chosen_level = 0  # 0=none, 1=alerta, 2=critico
+
+        # Regra 1: inclinação
         if current_accelerometer_value > 25:
-            player.lights[2] = False
-            player.blink_alert(0.5, 'critico')
+            chosen_mode = 'critico'
+            chosen_hz = 0.5
+            chosen_level = 2
         elif current_accelerometer_value > 15:
-            player.lights[0] = False
-            player.blink_alert(0.5, 'alerta')
+            chosen_mode = 'alerta'
+            chosen_hz = 0.5
+            chosen_level = 1
+
+        # Regra 2: içamento em mm (0..500)
+        try:
+            icamento_mm = int(max(0.0, min(1.0, float(getattr(player, 'icamento_cursor', 0.0)))) * 500.0)
+        except Exception:
+            icamento_mm = 0
+
+        ic_mode = None
+        ic_hz = 0.0
+        ic_level = 0
+        if icamento_mm > 400:
+            ic_mode = 'critico'
+            ic_hz = 4.0
+            ic_level = 2
+        elif icamento_mm > 200:
+            ic_mode = 'alerta'
+            ic_hz = 4.0
+            ic_level = 1
+
+        if (ic_level > chosen_level) or (ic_level == chosen_level and ic_hz > chosen_hz):
+            chosen_mode = ic_mode
+            chosen_hz = ic_hz
+            chosen_level = ic_level
+
+        if chosen_mode is not None:
+            if chosen_mode == 'critico':
+                player.lights[2] = False
+            else:
+                player.lights[0] = False
+            player.blink_alert(chosen_hz, chosen_mode)
         else:
             player.lights[0] = False
             player.lights[2] = False
@@ -1875,6 +1929,13 @@ while running:
         if warning and warning.lower() == 'erro':
             warning = 'ERRO'
         ui.draw(screen, mode_text=mode_text, warning=warning)
+    except Exception:
+        pass
+
+    # Draw dialogue box on simulator screen (replaces terminal output).
+    try:
+        if dialogue_manager.enabled:
+            dialogue_manager.draw_dialog_box(screen)
     except Exception:
         pass
     
