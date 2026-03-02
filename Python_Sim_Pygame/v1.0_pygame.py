@@ -628,6 +628,8 @@ from Player.Joystick import Joystick as JoystickController
 # `hardcore_mode` is initialized from the start menu above (variable already set)
 
 # control mode for input: 'keyboard' or 'joystick'
+# Will be initialized after we probe joystick availability below.
+# (kept uninitialized for now)
 control_mode = 'keyboard'
 
 # Instantiate a SidePanel on the right and populate with default screens
@@ -672,6 +674,11 @@ try:
     joystick_available = bool(getattr(joystick_controller, 'available', False))
 except Exception:
     joystick_available = False
+# Initialize control_mode now that we know if joystick is available.
+try:
+    control_mode = 'joystick' if joystick_leading and joystick_available else 'keyboard'
+except Exception:
+    control_mode = 'keyboard'
 # last printed control mode to avoid repeated logs
 last_printed_control_mode = control_mode
 
@@ -719,7 +726,7 @@ lever_speed_position = 1    # Alavanca de velocidade: começa neutra
 # Simula o acelerômetro baseado em tons vermelhos do mapa
 # 0 = reto, 6000 = 90 graus de inclinação
 # Configurações editáveis
-ACCELEROMETER_MAX_VALUE = 90  # máximo valor do acelerômetro (simula 90 graus)
+ACCELEROMETER_MAX_VALUE = 30  # máximo valor do acelerômetro (simula 90 graus)
 ACCELEROMETER_RED_MIN_DIFF = 80  # diferença mínima entre R e max(G,B) para detectar vermelho
 ACCELEROMETER_GB_MAX_DIFF = 30   # diferença máxima entre G e B (para G e B serem "iguais")
 ACCELEROMETER_SAMPLES = 4  # número de pontos ao redor do robô para amostrar (4 cantos da base)
@@ -803,6 +810,16 @@ def _toggle_hardcore():
 def _toggle_joystick_leading():
     global joystick_leading
     joystick_leading = not joystick_leading
+    # Update control_mode to reflect the new preference. If joystick isn't available,
+    # keep control_mode as 'keyboard'.
+    try:
+        global control_mode
+        if joystick_leading and joystick_available:
+            control_mode = 'joystick'
+        else:
+            control_mode = 'keyboard'
+    except Exception:
+        pass
     # debug print removed
 
 def set_can_movement_value(value):
@@ -1137,14 +1154,8 @@ while running:
     try:
         if keys[pygame.K_SPACE] and not prev_keys[pygame.K_SPACE]:
             player.toggle_mode()
-        # toggle control mode between keyboard and joystick (press C)
-        if keys[pygame.K_c] and not prev_keys[pygame.K_c]:
-            if control_mode == 'keyboard':
-                # try enable joystick only if controller reported available
-                if joystick_available:
-                    control_mode = 'joystick'
-            else:
-                control_mode = 'keyboard'
+        # Note: control source is determined by `joystick_leading` option.
+        # Removed legacy keyboard shortcut (C) that toggled `control_mode`.
         # speed mode shortcuts: 1 = rápida (100%), 2 = média (60%), 3 = lenta (30%)
         if keys[pygame.K_1] and not prev_keys[pygame.K_1]:
             try:
@@ -1263,70 +1274,55 @@ while running:
     except Exception:
         move_speed = 3
     
-    # Movement: either joystick-based (joystick_leading=True) or CAN-based (joystick_leading=False)
+    # Movement source:
+    # - joystick_leading=True  -> direct CAN joystick axes (`getJoystickValues`)
+    # - joystick_leading=False -> keyboard control
     # (pula se o menu de pausa estiver aberto)
     if not pause_menu.is_open:
         try:
             if joystick_leading:
-                # JOYSTICK LEADING MODE: Standard joystick control
-                if control_mode == 'joystick':
-                    if getattr(joystick_controller, 'available', False):
-                        try:
-                            lx, ly, rx, ry = joystick_controller.getJoystickValues()
-                            player.move_with_joystick((lx, ly, rx, ry), speed=move_speed)
-                        except Exception as e:
-                            # if joystick access fails at runtime, fall back to keyboard
-                            control_mode = 'keyboard'
-                            # debug print removed
-                            player.move(keys, speed=move_speed)
-                    else:
-                        # joystick not available at runtime; fall back
-                        control_mode = 'keyboard'
-                        # debug print removed
-                        player.move(keys, speed=move_speed)
+                # direct CAN joystick control only (legacy mapped path removed)
+                if getattr(joystick_controller, 'available', False):
+                    lx, ly, rx, ry = joystick_controller.getJoystickValues()
+                    player.move_with_joystick((lx, ly, rx, ry), speed=move_speed)
+                    control_mode = 'joystick'
                 else:
+                    # no CAN joystick available: keep keyboard as safe fallback
+                    control_mode = 'keyboard'
                     player.move(keys, speed=move_speed)
             else:
-                # CAN-BASED MODE: Movement controlled by can_movement_value (0 to 60000)
-                # Convert CAN value to simulated joystick input
-                # 30000 = middle (no movement), 0 = max reverse, 60000 = max forward
-                # Normalize to -1..1 range for joystick compatibility
-                can_normalized = (can_movement_value / 60000.0) * 2.0 - 1.0  # Convert 0-60000 to -1..1
-                
-                if control_mode == 'joystick' and getattr(joystick_controller, 'available', False):
-                    try:
-                        # Use CAN value for movement but steering from right stick
-                        lx, ly, rx, ry = joystick_controller.getJoystickValues()
-                        # Replace left_y (forward/backward) with CAN value
-                        player.move_with_joystick((lx, can_normalized, rx, ry), speed=move_speed)
-                    except Exception as e:
-                        # Fallback to keyboard if joystick fails
-                        control_mode = 'keyboard'
-                        player.move(keys, speed=move_speed)
-                else:
-                    # Keyboard with CAN control: simulate movement based on CAN value
-                    # Only apply CAN movement if it's significantly away from center
-                    if abs(can_normalized) > 0.1:
-                        if can_normalized > 0:
-                            # Forward movement
-                            player.makeMovement("forward", step=move_speed * abs(can_normalized))
-                        else:
-                            # Backward movement
-                            player.makeMovement("backward", step=move_speed * abs(can_normalized))
-                    else:
-                        # No CAN movement, use keyboard normally
-                        player.move(keys, speed=move_speed)
+                # keyboard mode when Joystick Leading is OFF
+                control_mode = 'keyboard'
+                player.move(keys, speed=move_speed)
         except Exception:
             player.move(keys, speed=move_speed)
 
     # Atualiza acelerômetro (valor simulado baseado em tons vermelhos do mapa)
     try:
         current_accelerometer_value = calculate_accelerometer_value()
+        # Alertas visuais por inclinação:
+        # > 25  -> crítico (vermelho piscando)
+        # > 15  -> alerta  (amarelo piscando)
+        if current_accelerometer_value > 25:
+            player.lights[2] = False
+            player.blink_alert(0.5, 'critico')
+        elif current_accelerometer_value > 15:
+            player.lights[0] = False
+            player.blink_alert(0.5, 'alerta')
+        else:
+            player.lights[0] = False
+            player.lights[2] = False
+
         # Envia valor do acelerômetro via CAN se joystick estiver disponível
         if getattr(joystick_controller, 'available', False) and hasattr(joystick_controller, 'send_inclinometer'):
             joystick_controller.send_inclinometer(current_accelerometer_value)
     except Exception:
         current_accelerometer_value = 0
+        try:
+            player.lights[0] = False
+            player.lights[2] = False
+        except Exception:
+            pass
 
     # Atualiza câmera antes de desenhar (offset/scale)
     camera.update(player)

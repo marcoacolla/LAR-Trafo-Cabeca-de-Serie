@@ -313,6 +313,47 @@ class Player:
             self.surface.blit(rotated_bar, rect.topleft)
 
 
+    def blink_alert(self, hz, mode='critico'):
+        """Pisca uma luz de alerta à frequência `hz` em Hz.
+        - mode: 'critico' -> pisca vermelha (`self.lights[0]`)
+                'alerta'  -> pisca amarela (`self.lights[2]`)
+        Chame este método a cada frame (por exemplo no loop de update/draw)
+        para atualizar o estado da luz selecionada.
+        """
+        try:
+            hz = float(hz)
+        except Exception:
+            # invalid hz: turn both off to be safe
+            try:
+                self.lights[0] = False
+                self.lights[2] = False
+            except Exception:
+                pass
+            return
+
+        # select target index
+        target = 0 if str(mode).lower() == 'critico' else 2
+
+        if hz <= 0:
+            try:
+                self.lights[target] = False
+            except Exception:
+                pass
+            return
+
+        period_ms = 1000.0 / hz
+        ticks = pygame.time.get_ticks()
+        on = ((ticks % period_ms) < (period_ms / 2.0))
+        try:
+            self.lights[target] = bool(on)
+        except Exception:
+            try:
+                # fallback: ensure target light off
+                self.lights[target] = False
+            except Exception:
+                pass
+
+
 
     def draw(self, camera_or_offset=(0,0)):
         # Draw robot scaled to camera: create base surface in world units then scale to screen pixels
