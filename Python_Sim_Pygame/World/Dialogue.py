@@ -9,22 +9,41 @@ class DialogueManager:
 	COLOR_DIALOG_1 = (255, 0, 0)
 	COLOR_DIALOG_2 = (255, 255, 0)
 	COLOR_DIALOG_3 = (255, 0, 255)
+	COLOR_TOLERANCE = 24
+
+	DIALOG_COLORS_BY_PHASE: Dict[str, Dict[int, Tuple[int, int, int]]] = {
+		"Mapa Tutorial Alertas de Inclinação": {
+			1: (255, 0, 0),
+			2: (255, 255, 0),
+			3: (255, 0, 255),
+		},
+		"Mapa Tutorial Alertas dos Sensores": {
+			1: (255, 255, 0),   # amarelo
+			2: (255, 108, 0),   # laranja
+			3: (0, 0, 255),     # azul
+			4: (0, 255, 255),   # ciano
+			5: (255, 0, 255),   # rosa
+			6: (144, 0, 255),   # roxo
+			7: (150, 255, 0),     # verde lima
+			8: (0, 255, 102),     # azul marinho
+		},
+	}
 
 	DIALOG_TEXTS_BY_PHASE: Dict[str, Dict[int, str]] = {
-		"t_inclometro": {
+		"Mapa Tutorial Alertas de Inclinação": {
 			1: "Esta fase auxiliará você a entender o inclinômetro e os alertas importantes para a operação segura do robô. Quanto mais avermelhado é o piso, mais inclinado é o plano",
 			2: "Inclinação de alerta: O inclinômetro detecta quando o robô atinge uma inclinação perigosa.",
 			3: "Inclinação crítica: Se a inclinação continuar aumentando, o robô pode tombar. Mantenha o controle para evitar danos.",
 		},
-		"t_inclinometro": {
-			1: "Bem vindo ao Trafo Simulator! Esta fase auxiliará você a entender o funcionamento do inclinômetro os alertas importantes para a operação segura do robô.",
-			2: "Inclinação de alerta: O inclinômetro detecta quando o robô atinge uma inclinação perigosa.",
-			3: "Inclinação crítica: Se a inclinação continuar aumentando, o robô pode tombar. Mantenha o controle para evitar danos.",
-		},
-		"fase_2": {
-			1: "[Fase 2] Diálogo 1: Iniciando novo objetivo.",
-			2: "[Fase 2] Diálogo 2: Verifique o alinhamento do robô.",
-			3: "[Fase 2] Diálogo 3: Priorize segurança e estabilidade.",
+		"Mapa Tutorial Alertas dos Sensores": {
+			1: "Alerta de temperatura, atenção as luzes do Trafo. Verifique o sistema de resfriamento.",
+			2: "Alerta crítico de temperatura, atenção as luzes do Trafo. Verifique o sistema de resfriamento imediatamente.",
+			3: "Alerta de bateria fraca, atenção as luzes do Trafo. Recarregue a bateria em breve.",
+			4: "Alerta de bateria crítica, atenção as luzes do Trafo. Recarregue a bateria imediatamente.",
+			5: "Alerta de pressao, atenção as luzes do Trafo. Verifique os sensores de pressão e o sistema hidráulico.",
+			6: "Alerta de pressão crítica, atenção as luzes do Trafo. Verifique os sensores de pressão e o sistema hidráulico imediatamente.",
+			7: "Alerta de baixo óleo, atenção as luzes do Trafo. Verifique os níveis de óleo e o sistema de lubrificação.",
+			8: "Alerta de óleo crítico, atenção as luzes do Trafo. Verifique os níveis de óleo e o sistema de lubrificação imediatamente.",
 		},
 		"fase_3": {
 			1: "[Fase 3] Diálogo 1: Área operacional avançada.",
@@ -38,7 +57,7 @@ class DialogueManager:
 		project_root: str,
 		obstacle_map_path: str,
 		obstacle_map_size: Tuple[int, int],
-		phase: str = "t_inclometro",
+		phase: str = "Mapa Tutorial Alertas de Inclinação",
 	):
 		self.project_root = project_root
 		self.obstacle_map_path = obstacle_map_path
@@ -62,9 +81,10 @@ class DialogueManager:
 
 	def process_player_polygon(self, polygon: Sequence[Tuple[float, float]], auto_print: bool = False) -> int:
 		current_dialog_id = self.detect_dialog_from_polygon(polygon)
+		phase_dialogs = self.DIALOG_TEXTS_BY_PHASE.get(self.phase, {})
 
 		if current_dialog_id != self.last_dialog_id:
-			if current_dialog_id in (1, 2, 3):
+			if current_dialog_id in phase_dialogs:
 				self.active_dialog_id = current_dialog_id
 				self.active_dialog_text = self.get_dialog_text(current_dialog_id)
 			else:
@@ -149,12 +169,17 @@ class DialogueManager:
 		except Exception:
 			return 0
 
-		if red >= 250 and green <= 10 and blue <= 10:
-			return 1
-		if red >= 250 and green >= 250 and blue <= 10:
-			return 2
-		if red >= 250 and green <= 10 and blue >= 250:
-			return 3
+		phase_colors = self.DIALOG_COLORS_BY_PHASE.get(self.phase)
+		if not phase_colors:
+			return 0
+
+		for dialog_id, (target_r, target_g, target_b) in phase_colors.items():
+			if (
+				abs(red - target_r) <= self.COLOR_TOLERANCE
+				and abs(green - target_g) <= self.COLOR_TOLERANCE
+				and abs(blue - target_b) <= self.COLOR_TOLERANCE
+			):
+				return dialog_id
 		return 0
 
 	def _point_in_polygon(self, x: float, y: float, polygon: Sequence[Tuple[float, float]]) -> bool:

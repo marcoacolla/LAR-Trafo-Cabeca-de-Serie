@@ -542,12 +542,24 @@ else:
     map_path = os.path.join(os.path.dirname(__file__), 'World', 'Obstacles', 'Map1.png')
 map_image = pygame.image.load(map_path).convert()
 
+
+def infer_dialogue_phase_from_map(path):
+    try:
+        # Phase key follows the map filename (without extension), e.g.
+        # "Mapa Tutorial Alertas dos Sensores.png" -> "Mapa Tutorial Alertas dos Sensores"
+        return os.path.splitext(os.path.basename(path))[0]
+    except Exception:
+        return 'Mapa Tutorial Alertas de Inclinação'
+
+
+dialogue_phase = infer_dialogue_phase_from_map(map_path)
+
 # Dialogue/EventMap manager (loads optional matching map from World/EventMap)
 dialogue_manager = DialogueManager(
     project_root=os.path.dirname(__file__),
     obstacle_map_path=map_path,
     obstacle_map_size=map_image.get_size(),
-    phase='t_inclometro',
+    phase=dialogue_phase,
 )
 
 
@@ -1357,7 +1369,42 @@ while running:
             chosen_hz = ic_hz
             chosen_level = ic_level
 
-        if chosen_mode is not None:
+        # Regra 3 (fase de sensores): alertas guiados pelo diálogo ativo
+        # 1: amarelo 1Hz | 2: vermelho 1Hz | 3: amarelo 6Hz | 4: vermelho 6Hz
+        # 5: amarelo 2Hz | 6: vermelho 2Hz | 7: amarelo fixo | 8: vermelho fixo
+        fixed_light_mode = None  # None | 'alerta' | 'critico'
+        try:
+            current_phase = str(getattr(dialogue_manager, 'phase', ''))
+            is_sensor_phase = (current_phase == 'Mapa Tutorial Alertas dos Sensores')
+            active_dialog_id = int(getattr(dialogue_manager, 'active_dialog_id', 0))
+
+            if is_sensor_phase:
+                if active_dialog_id == 1:
+                    chosen_mode, chosen_hz, chosen_level = 'alerta', 1.0, 1
+                elif active_dialog_id == 2:
+                    chosen_mode, chosen_hz, chosen_level = 'critico', 1.0, 2
+                elif active_dialog_id == 3:
+                    chosen_mode, chosen_hz, chosen_level = 'alerta', 6.0, 1
+                elif active_dialog_id == 4:
+                    chosen_mode, chosen_hz, chosen_level = 'critico', 6.0, 2
+                elif active_dialog_id == 5:
+                    chosen_mode, chosen_hz, chosen_level = 'alerta', 2.0, 1
+                elif active_dialog_id == 6:
+                    chosen_mode, chosen_hz, chosen_level = 'critico', 2.0, 2
+                elif active_dialog_id == 7:
+                    fixed_light_mode = 'alerta'
+                elif active_dialog_id == 8:
+                    fixed_light_mode = 'critico'
+        except Exception:
+            pass
+
+        if fixed_light_mode == 'alerta':
+            player.lights[0] = False
+            player.lights[2] = True
+        elif fixed_light_mode == 'critico':
+            player.lights[2] = False
+            player.lights[0] = True
+        elif chosen_mode is not None:
             if chosen_mode == 'critico':
                 player.lights[2] = False
             else:
