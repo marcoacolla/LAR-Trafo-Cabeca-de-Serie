@@ -400,6 +400,7 @@ class PauseMenu:
 pygame.init()
 # Main display and layout: reserve a right-side panel for customizable UI
 PANEL_WIDTH = 300  # largura padrão do painel lateral (personalizável)
+BOTTOM_BAR_HEIGHT = 92  # barra inferior
 SCREEN_W = 800 + PANEL_WIDTH
 SCREEN_H = 600
 screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))  # largura x altura
@@ -466,11 +467,12 @@ def toggle_fullscreen():
             screen = pygame.display.set_mode(_windowed_size)
 
         # Update camera dimensions so centering/scale continue to work
-        # (world viewport excludes the reserved right-side panel area)
+        # (world viewport excludes right-side and bottom bars)
         try:
             world_view_w = max(1, int(screen.get_width() - PANEL_WIDTH))
+            world_view_h = max(1, int(screen.get_height() - BOTTOM_BAR_HEIGHT))
             camera.width = world_view_w
-            camera.height = screen.get_height()
+            camera.height = world_view_h
         except Exception:
             pass
 
@@ -489,7 +491,7 @@ def toggle_fullscreen():
                             if getattr(ui_obj, '_explicit_panel_y', False):
                                 # keep the explicit y anchored to the bottom of the screen
                                 pr.x = int(max(0, min(new_w - pr.width, new_w - pr.width)))
-                                pr.y = int(max(0, new_h - pr.height))
+                                pr.y = int(max(0, new_h - BOTTOM_BAR_HEIGHT - pr.height))
                             else:
                                 # compute previous position ratios relative to old screen
                                 try:
@@ -626,7 +628,7 @@ else:
     SPAWN_POINT = (200, 200)
 
 # reserve game viewport width (window keeps same total size)
-camera = Camera(max(1, SCREEN_W - PANEL_WIDTH), SCREEN_H)
+camera = Camera(max(1, SCREEN_W - PANEL_WIDTH), max(1, SCREEN_H - BOTTOM_BAR_HEIGHT))
 player = Player(SPAWN_POINT, screen, camera)
 # inform camera about map bounds so it can clamp offsets to map extents
 try:
@@ -671,12 +673,12 @@ if UIManager is not None:
             sw, sh = screen.get_size()
         except Exception:
             sw, sh = SCREEN_W, SCREEN_H
-        # Place a compact panel anchored to the bottom of the right-side bar
+        # Place a compact panel anchored above the bottom bar inside the right-side bar
         panel_h = 120
-        ui_panel_rect = (sw - PANEL_WIDTH, max(0, sh - panel_h), PANEL_WIDTH, panel_h)
+        ui_panel_rect = (sw - PANEL_WIDTH, max(0, sh - BOTTOM_BAR_HEIGHT - panel_h), PANEL_WIDTH, panel_h)
     except Exception:
         panel_h = 120
-        ui_panel_rect = (SCREEN_W - PANEL_WIDTH, max(0, SCREEN_H - panel_h), PANEL_WIDTH, panel_h)
+        ui_panel_rect = (SCREEN_W - PANEL_WIDTH, max(0, SCREEN_H - BOTTOM_BAR_HEIGHT - panel_h), PANEL_WIDTH, panel_h)
     ui = UIManager(screen, panel_rect=ui_panel_rect, player=player)
 else:
     # fallback: older SidePanel on the right
@@ -1431,17 +1433,18 @@ while running:
     camera.update(player)
 
     # Limpa e desenha o mapa (aplica escala) apenas na área útil do mundo,
-    # à esquerda da barra lateral
+    # à esquerda da barra lateral e acima da barra inferior
     screen.fill((220, 230, 255))
     try:
         sw, sh = screen.get_size()
     except Exception:
         sw, sh = SCREEN_W, SCREEN_H
     world_view_w = max(1, int(sw - PANEL_WIDTH))
-    world_view_rect = pygame.Rect(0, 0, world_view_w, sh)
+    world_view_h = max(1, int(sh - BOTTOM_BAR_HEIGHT))
+    world_view_rect = pygame.Rect(0, 0, world_view_w, world_view_h)
     try:
         camera.width = world_view_w
-        camera.height = sh
+        camera.height = world_view_h
     except Exception:
         pass
     prev_clip = screen.get_clip()
@@ -1455,7 +1458,7 @@ while running:
         screen.blit(map_image, (-camera.offset_x, -camera.offset_y))
     screen.set_clip(prev_clip)
 
-    # Draw right-side UI bar (bluish-white background) that hosts the UI
+    # Draw right-side UI bar (lighter bluish-white) that hosts the UI
     try:
         sw = screen.get_width()
         sh = screen.get_height()
@@ -1469,12 +1472,31 @@ while running:
             screen.blit(shadow_surf, (shadow_rect.x, shadow_rect.y))
         except Exception:
             pygame.draw.rect(screen, (70, 78, 92), shadow_rect)
-        # main background and subtle border
-        pygame.draw.rect(screen, (92, 104, 122), ui_rect)  # darker bluish-gray
-        pygame.draw.rect(screen, (130, 148, 172), ui_rect, 2)
+        # main background and subtle border (mais branco com tom azulado)
+        pygame.draw.rect(screen, (236, 243, 252), ui_rect)
+        pygame.draw.rect(screen, (190, 206, 225), ui_rect, 2)
         # stronger outline to make it visually distinct
         outline_rect = ui_rect.inflate(2, 2)
-        pygame.draw.rect(screen, (58, 68, 84), outline_rect, 1)
+        pygame.draw.rect(screen, (150, 168, 192), outline_rect, 1)
+
+        # Bottom bar: same style, only on world area (no overlap with side panel)
+        bottom_rect = pygame.Rect(0, max(0, sh - BOTTOM_BAR_HEIGHT), max(1, sw - PANEL_WIDTH), BOTTOM_BAR_HEIGHT)
+        bottom_shadow_rect = bottom_rect.move(0, 2)
+        try:
+            bottom_shadow = pygame.Surface((bottom_shadow_rect.width, bottom_shadow_rect.height), pygame.SRCALPHA)
+            bottom_shadow.fill((0, 0, 0, 58))
+            screen.blit(bottom_shadow, (bottom_shadow_rect.x, bottom_shadow_rect.y))
+        except Exception:
+            pygame.draw.rect(screen, (90, 98, 112), bottom_shadow_rect)
+        pygame.draw.rect(screen, (236, 243, 252), bottom_rect)
+        pygame.draw.rect(screen, (190, 206, 225), bottom_rect, 2)
+        bottom_outline = bottom_rect.inflate(0, 1)
+        pygame.draw.rect(screen, (150, 168, 192), bottom_outline, 1)
+
+        # Connector line at junction to visually unify both bars
+        jx = max(0, sw - PANEL_WIDTH)
+        jy = max(0, sh - BOTTOM_BAR_HEIGHT)
+        pygame.draw.line(screen, (190, 206, 225), (jx, jy), (jx, sh - 1), 2)
     except Exception:
         pass
 
@@ -1721,7 +1743,7 @@ while running:
 
     try:
         prev_clip = screen.get_clip()
-        world_clip_rect = pygame.Rect(0, 0, max(1, screen.get_width() - PANEL_WIDTH), screen.get_height())
+        world_clip_rect = pygame.Rect(0, 0, max(1, screen.get_width() - PANEL_WIDTH), max(1, screen.get_height() - BOTTOM_BAR_HEIGHT))
         screen.set_clip(world_clip_rect)
         trafo.draw(screen, camera)
     except Exception:
@@ -2006,7 +2028,7 @@ while running:
     # Draw dialogue box on simulator screen (replaces terminal output).
     try:
         if dialogue_manager.enabled:
-            dialogue_manager.draw_dialog_box(screen)
+            dialogue_manager.draw_dialog_box(screen, reserved_right=PANEL_WIDTH, reserved_bottom=BOTTOM_BAR_HEIGHT)
     except Exception:
         pass
     

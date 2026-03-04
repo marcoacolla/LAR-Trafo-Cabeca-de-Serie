@@ -114,23 +114,43 @@ class DialogueManager:
 		lines.append(current)
 		return lines
 
-	def draw_dialog_box(self, screen: pygame.Surface) -> None:
+	def draw_dialog_box(self, screen: pygame.Surface, reserved_right: int = 0, reserved_bottom: int = 0) -> None:
 		if not self.active_dialog_text:
 			return
 
 		sw, sh = screen.get_size()
-		box_w = min(900, max(520, int(sw * 0.72)))
-		pad_x = 18
-		pad_y = 12
-		text_font = pygame.font.SysFont(None, 28)
+		avail_w = max(260, int(sw - max(0, reserved_right) - 24))
+		bar_h = int(max(0, reserved_bottom))
+		pad_x = 14
+		pad_y = 8
+		text_font = pygame.font.SysFont(None, 22)
 
-		text_lines = self._wrap_text(self.active_dialog_text, text_font, box_w - (pad_x * 2))
-		line_h = text_font.get_height() + 4
+		box_w = min(avail_w, max(320, int(avail_w * 0.96)))
+		wrap_w = max(80, box_w - (pad_x * 2))
+		text_lines = list(self._wrap_text(self.active_dialog_text, text_font, wrap_w))
+		line_h = text_font.get_height() + 2
+
+		if bar_h > 0:
+			max_h = max(24, bar_h - 12)
+			max_lines = max(1, int((max_h - (pad_y * 2)) / max(1, line_h)))
+			if len(text_lines) > max_lines:
+				text_lines = text_lines[:max_lines]
+				if text_lines:
+					last = text_lines[-1]
+					ellipsis = '...'
+					while last and text_font.size(last + ellipsis)[0] > wrap_w:
+						last = last[:-1]
+					text_lines[-1] = (last + ellipsis) if last else ellipsis
+
 		content_h = len(text_lines) * line_h
 		box_h = content_h + (pad_y * 2)
 
-		box_x = (sw - box_w) // 2
-		box_y = sh - box_h - 16
+		if bar_h > 0:
+			box_x = 12
+			box_y = sh - bar_h + max(4, (bar_h - box_h) // 2)
+		else:
+			box_x = (sw - box_w) // 2
+			box_y = sh - box_h - 16
 
 		bg = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
 		bg.fill((10, 14, 24, 220))
