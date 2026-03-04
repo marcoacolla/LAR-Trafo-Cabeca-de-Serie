@@ -466,8 +466,10 @@ def toggle_fullscreen():
             screen = pygame.display.set_mode(_windowed_size)
 
         # Update camera dimensions so centering/scale continue to work
+        # (world viewport excludes the reserved right-side panel area)
         try:
-            camera.width = screen.get_width()
+            world_view_w = max(1, int(screen.get_width() - PANEL_WIDTH))
+            camera.width = world_view_w
             camera.height = screen.get_height()
         except Exception:
             pass
@@ -624,7 +626,7 @@ else:
     SPAWN_POINT = (200, 200)
 
 # reserve game viewport width (window keeps same total size)
-camera = Camera(SCREEN_W, SCREEN_H)
+camera = Camera(max(1, SCREEN_W - PANEL_WIDTH), SCREEN_H)
 player = Player(SPAWN_POINT, screen, camera)
 # inform camera about map bounds so it can clamp offsets to map extents
 try:
@@ -1428,8 +1430,22 @@ while running:
     # Atualiza câmera antes de desenhar (offset/scale)
     camera.update(player)
 
-    # Limpa e desenha o mapa (aplica escala)
+    # Limpa e desenha o mapa (aplica escala) apenas na área útil do mundo,
+    # à esquerda da barra lateral
     screen.fill((220, 230, 255))
+    try:
+        sw, sh = screen.get_size()
+    except Exception:
+        sw, sh = SCREEN_W, SCREEN_H
+    world_view_w = max(1, int(sw - PANEL_WIDTH))
+    world_view_rect = pygame.Rect(0, 0, world_view_w, sh)
+    try:
+        camera.width = world_view_w
+        camera.height = sh
+    except Exception:
+        pass
+    prev_clip = screen.get_clip()
+    screen.set_clip(world_view_rect)
     if hasattr(camera, 'scale') and camera.scale != 1.0:
         map_w = int(map_image.get_width() * camera.scale)
         map_h = int(map_image.get_height() * camera.scale)
@@ -1437,6 +1453,7 @@ while running:
         screen.blit(scaled_map, (-camera.offset_x * camera.scale, -camera.offset_y * camera.scale))
     else:
         screen.blit(map_image, (-camera.offset_x, -camera.offset_y))
+    screen.set_clip(prev_clip)
 
     # Draw right-side UI bar (bluish-white background) that hosts the UI
     try:
@@ -1703,6 +1720,9 @@ while running:
         pass
 
     try:
+        prev_clip = screen.get_clip()
+        world_clip_rect = pygame.Rect(0, 0, max(1, screen.get_width() - PANEL_WIDTH), screen.get_height())
+        screen.set_clip(world_clip_rect)
         trafo.draw(screen, camera)
     except Exception:
         pass
@@ -1710,6 +1730,10 @@ while running:
     # draw player on top of trafo
     player.draw(camera_or_offset=camera)
     player.curvature.update(screen)
+    try:
+        screen.set_clip(prev_clip)
+    except Exception:
+        pass
 
     # Draw UI: current mode in bottom-left of camera view with semi-transparent background
     try:

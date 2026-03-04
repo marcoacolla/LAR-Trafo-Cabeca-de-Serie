@@ -133,13 +133,27 @@ class Player:
             nx, ny = float(pos[0]), float(pos[1])
         except Exception:
             return
-        # If a global map_image is present, clamp the player's center so the
-        # player cannot move outside the visible map. Use half-dimensions as margin.
+        # Clamp player's center to world/map bounds (acts like a wall at map edges).
+        # Prefer camera-provided map dimensions; fallback to global map_image.
         try:
-            mi = globals().get('map_image')
-            if mi is not None:
-                map_w = float(mi.get_width())
-                map_h = float(mi.get_height())
+            map_w = None
+            map_h = None
+            cam = getattr(self, 'camera', None)
+            if cam is not None and hasattr(cam, 'map_width') and hasattr(cam, 'map_height'):
+                try:
+                    map_w = float(cam.map_width)
+                    map_h = float(cam.map_height)
+                except Exception:
+                    map_w = None
+                    map_h = None
+
+            if map_w is None or map_h is None:
+                mi = globals().get('map_image')
+                if mi is not None:
+                    map_w = float(mi.get_width())
+                    map_h = float(mi.get_height())
+
+            if map_w is not None and map_h is not None:
                 half_w = float(self.width) / 2.0
                 half_h = float(self.lenght) / 2.0
                 nx = min(max(nx, half_w), max(half_w, map_w - half_w))
@@ -154,8 +168,9 @@ class Player:
             cam = getattr(self, 'camera', None)
             surf = getattr(self, 'surface', None)
             if cam is not None and surf is not None and hasattr(cam, 'world_to_screen') and hasattr(cam, 'screen_to_world'):
-                s_w = float(surf.get_width())
-                s_h = float(surf.get_height())
+                # Use camera viewport dimensions when available (excludes side UI panel).
+                s_w = float(getattr(cam, 'width', 0) or surf.get_width())
+                s_h = float(getattr(cam, 'height', 0) or surf.get_height())
                 # compute half-dimensions in screen space
                 scale = cam.scale if getattr(cam, 'scale', None) not in (None, 0) else 1.0
                 half_sw = (float(self.width) * scale) / 2.0
