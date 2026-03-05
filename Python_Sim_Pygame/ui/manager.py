@@ -70,6 +70,26 @@ class UIManager:
         self.joy_button_map = {0: 'up', 1: 'down', 2: 'enter', 3: 'back'}
         self.joy_button_states = {}
 
+    def _draw_text_with_outline(self, surf, text_surface, x, y, outline_color=(0,0,0), outline_width=1):
+        """Draw text with outline only (no background highlight box)."""
+        try:
+            # Colorize a copy of the text preserving alpha, so only glyph pixels
+            # are drawn for the outline (no rectangular black background).
+            outline_surf = text_surface.copy()
+            outline_surf.fill((outline_color[0], outline_color[1], outline_color[2], 255), special_flags=pygame.BLEND_RGBA_MULT)
+
+            # Draw outline around the text
+            for dx in range(-outline_width, outline_width + 1):
+                for dy in range(-outline_width, outline_width + 1):
+                    if dx != 0 or dy != 0:
+                        surf.blit(outline_surf, (x + dx, y + dy))
+
+            # Draw original text on top
+            surf.blit(text_surface, (x, y))
+        except Exception:
+            # Fallback: just draw normally if outline fails
+            surf.blit(text_surface, (x, y))
+
     def add_screen(self, title, options):
         # By default screens are navigable by left/right. Pass title=='Menu_01' or
         # options with a special marker to make non-navigable screens.
@@ -255,14 +275,63 @@ class UIManager:
             return 3
         return 0
 
+    def _get_selector_column_layout(self, surf):
+        """Compute a centered vertical column for side-panel circular selectors.
+
+        Returns (cx, mode_cy, aux_cy, speed_cy).
+        """
+        try:
+            panel = self.panel_rect
+            sw = surf.get_width()
+            sh = surf.get_height()
+            sidebar_x = panel.x if hasattr(panel, 'x') else max(0, sw - panel[2])
+            sidebar_w = panel.width if hasattr(panel, 'width') else panel[2]
+
+            cx = int(sidebar_x + (sidebar_w // 2))
+            mode_cy = int(sh // 2)
+            gap = 92
+            aux_cy = mode_cy + gap
+            speed_cy = aux_cy + gap
+
+            bottom_limit = int(sh - 34)
+            overflow = speed_cy - bottom_limit
+            if overflow > 0:
+                mode_cy -= overflow
+                aux_cy -= overflow
+                speed_cy -= overflow
+
+            top_limit = 34
+            if mode_cy < top_limit:
+                shift = top_limit - mode_cy
+                mode_cy += shift
+                aux_cy += shift
+                speed_cy += shift
+
+            return cx, mode_cy, aux_cy, speed_cy
+        except Exception:
+            # safe fallback to previous approximate positions
+            panel = self.panel_rect
+            cx = panel.x + 72
+            mode_cy = panel.y + 22
+            aux_cy = mode_cy + 92
+            speed_cy = aux_cy + 92
+            return cx, mode_cy, aux_cy, speed_cy
+
     def _draw_mode_selector(self, surf):
         """Draw a potentiometer-like circular mode selector in the side panel."""
         try:
-            panel = self.panel_rect
-            # move selector a bit up and to the left in the side panel
-            cx = panel.x + 72
-            cy = panel.y + 22
+            cx, cy, _, _ = self._get_selector_column_layout(surf)
             radius = 20
+
+            # Draw title "MODOS" above the selector
+            try:
+                title_font = pygame.font.SysFont(None, 14)
+                title_text = title_font.render('MODOS', True, (150, 255, 170))
+                title_x = cx - title_text.get_width() // 2
+                title_y = cy - 60
+                self._draw_text_with_outline(surf, title_text, title_x, title_y)
+            except Exception:
+                pass
 
             # base circle: black body + subtle white outline
             pygame.draw.circle(surf, (0, 0, 0), (cx, cy), radius)
@@ -286,9 +355,11 @@ class UIManager:
                 dot_x = cx + ox
                 dot_y = cy + oy
                 if idx == selected:
-                    pygame.draw.circle(surf, (255, 255, 255), (dot_x, dot_y), 5)
+                    pygame.draw.circle(surf, (0, 0, 0), (dot_x, dot_y), 6)
+                    pygame.draw.circle(surf, (255, 255, 255), (dot_x, dot_y), 4)
                 else:
-                    pygame.draw.circle(surf, (185, 185, 185), (dot_x, dot_y), 3)
+                    pygame.draw.circle(surf, (40, 40, 40), (dot_x, dot_y), 4)
+                    pygame.draw.circle(surf, (185, 185, 185), (dot_x, dot_y), 2)
 
             # pointer with black outline + white inner line
             tx = cx + int(detents[selected][0] * 0.75)
@@ -317,13 +388,20 @@ class UIManager:
         return 1
 
     def _draw_speed_selector(self, surf):
-        """Draw a cloned selector for speed, placed to the right."""
+        """Draw the existing 3-option speed selector, placed below the aux selector."""
         try:
-            panel = self.panel_rect
-            # positioned to the right of the mode selector
-            cx = panel.x + 202
-            cy = panel.y + 22
+            cx, _, _, cy = self._get_selector_column_layout(surf)
             radius = 20
+
+            # Draw title "VELOCIDADE" above the selector
+            try:
+                title_font = pygame.font.SysFont(None, 14)
+                title_text = title_font.render('VELOCIDADE', True, (150, 255, 170))
+                title_x = cx - title_text.get_width() // 2
+                title_y = cy - 60
+                self._draw_text_with_outline(surf, title_text, title_x, title_y)
+            except Exception:
+                pass
 
             # base circle: black body + white outline
             pygame.draw.circle(surf, (0, 0, 0), (cx, cy), radius)
@@ -345,19 +423,21 @@ class UIManager:
                 dot_x = cx + ox
                 dot_y = cy + oy
                 if idx == selected:
-                    pygame.draw.circle(surf, (255, 255, 255), (dot_x, dot_y), 5)
+                    pygame.draw.circle(surf, (0, 0, 0), (dot_x, dot_y), 6)
+                    pygame.draw.circle(surf, (255, 255, 255), (dot_x, dot_y), 4)
                 else:
-                    pygame.draw.circle(surf, (185, 185, 185), (dot_x, dot_y), 3)
+                    pygame.draw.circle(surf, (40, 40, 40), (dot_x, dot_y), 4)
+                    pygame.draw.circle(surf, (185, 185, 185), (dot_x, dot_y), 2)
 
             # symbols for differentiation: left='-', middle='o', right='+'
             sym_font = pygame.font.SysFont(None, 18)
-            symbols = ['-', 'o', '+']
+            symbols = ['-', '-', '+']
             for idx, (ox, oy) in enumerate(detents):
                 sx = cx + int(ox * 1.28)
                 sy = cy + int(oy * 1.28)
-                text = sym_font.render(symbols[idx], True, (235, 235, 235))
+                text = sym_font.render(symbols[idx], True, (255, 225, 110))
                 rect = text.get_rect(center=(sx, sy))
-                surf.blit(text, rect.topleft)
+                self._draw_text_with_outline(surf, text, rect.x, rect.y)
 
             # pointer with black outline + white inner line
             tx = cx + int(detents[selected][0] * 0.75)
@@ -369,29 +449,91 @@ class UIManager:
         except Exception:
             pass
 
+    def _draw_aux_selector(self, surf):
+        """Draw an extra 3-option circular selector below mode selector."""
+        try:
+            cx, _, cy, _ = self._get_selector_column_layout(surf)
+            radius = 20
+
+            try:
+                title_font = pygame.font.SysFont(None, 14)
+                title_text = title_font.render('PNEUS', True, (150, 255, 170))
+                title_x = cx - title_text.get_width() // 2
+                title_y = cy - 60
+                self._draw_text_with_outline(surf, title_text, title_x, title_y)
+            except Exception:
+                pass
+
+            pygame.draw.circle(surf, (0, 0, 0), (cx, cy), radius)
+            pygame.draw.circle(surf, (255, 255, 255), (cx, cy), radius, 2)
+
+            angles_deg = [180, 90, 0]
+            detents = []
+            arc_r = radius + 10
+            for ang in angles_deg:
+                a = math.radians(ang)
+                ox = int(round(math.cos(a) * arc_r))
+                oy = int(round(-math.sin(a) * arc_r))
+                detents.append((ox, oy))
+
+            selected = 1
+            for idx, (ox, oy) in enumerate(detents):
+                dot_x = cx + ox
+                dot_y = cy + oy
+                if idx == selected:
+                    pygame.draw.circle(surf, (0, 0, 0), (dot_x, dot_y), 6)
+                    pygame.draw.circle(surf, (255, 255, 255), (dot_x, dot_y), 4)
+                else:
+                    pygame.draw.circle(surf, (40, 40, 40), (dot_x, dot_y), 4)
+                    pygame.draw.circle(surf, (185, 185, 185), (dot_x, dot_y), 2)
+
+            sym_font = pygame.font.SysFont(None, 16)
+            symbols = ['E', '-', 'D']
+            for idx, (ox, oy) in enumerate(detents):
+                sx = cx + int(ox * 1.28)
+                sy = cy + int(oy * 1.28)
+                text = sym_font.render(symbols[idx], True, (255, 225, 110))
+                rect = text.get_rect(center=(sx, sy))
+                self._draw_text_with_outline(surf, text, rect.x, rect.y)
+
+            tx = cx + int(detents[selected][0] * 0.75)
+            ty = cy + int(detents[selected][1] * 0.75)
+            pygame.draw.line(surf, (0, 0, 0), (cx, cy), (tx, ty), 5)
+            pygame.draw.line(surf, (255, 255, 255), (cx, cy), (tx, ty), 3)
+            pygame.draw.circle(surf, (0, 0, 0), (cx, cy), 4)
+            pygame.draw.circle(surf, (255, 255, 255), (cx, cy), 2)
+        except Exception:
+            pass
+
     def _draw_mode_lever(self, surf):
         """Draw a horizontal mechanical lever above the mode selector.
-        
-        3 positions: left, center (neutral), right
-        Controlled by arrow keys (LEFT/RIGHT), independent of game state
+
+        2 positions: left and right (lights selector, no neutral center).
+        Controlled by arrow keys (LEFT/RIGHT), independent of game state.
         """
         try:
             import sys
             # Get the main module (where v1.0_pygame.py runs)
             main_module = sys.modules.get('__main__')
-            lever_position = getattr(main_module, 'lever_mode_position', 1) if main_module else 1
+            lever_position = getattr(main_module, 'lever_mode_position', 0) if main_module else 0
             
             panel = self.panel_rect
-            cx = panel.x + 72
-            cy = panel.y + 22 - 65  # offset up from selector
+            center_x, _, _, _ = self._get_selector_column_layout(surf)
+            cx = center_x - 98
+            cy = panel.y + 22 - 130  # offset up from selector (raised higher)
             
-            # Alavanca horizontal: LEFT (0), CENTER (1), RIGHT (2)
-            if lever_position == 0:
-                offset_x = -32  # left
-            elif lever_position == 2:
-                offset_x = 32   # right
-            else:
-                offset_x = 0    # center (neutral)
+            # Draw title "LUZES" above the lever
+            try:
+                title_font = pygame.font.SysFont(None, 14)
+                title_text = title_font.render('LUZES', True, (150, 255, 170))
+                title_x = cx - title_text.get_width() // 2
+                title_y = cy - 28
+                self._draw_text_with_outline(surf, title_text, title_x, title_y)
+            except Exception:
+                pass
+            
+            # Alavanca horizontal: LEFT (0), RIGHT (1)
+            offset_x = -32 if int(lever_position) <= 0 else 32
             
             ex = cx + offset_x
             ey = cy  # sem movimento vertical
@@ -407,13 +549,30 @@ class UIManager:
             # Knob at lever end
             pygame.draw.circle(surf, (0, 0, 0), (ex, ey), 6)
             pygame.draw.circle(surf, (220, 220, 220), (ex, ey), 3)
+            
+            # Labels: OFF (Left) and ON (Right) with black outline
+            try:
+                label_font = pygame.font.SysFont(None, 16)
+                label_left = label_font.render('OFF', True, (255, 225, 110))
+                label_right = label_font.render('ON', True, (255, 225, 110))
+                # Draw labels with white outline
+                left_rect = label_left.get_rect()
+                left_x = cx - 52 - (32 - left_rect.width) // 2
+                left_y = cy - 8
+                self._draw_text_with_outline(surf, label_left, left_x, left_y)
+                right_rect = label_right.get_rect()
+                right_x = cx + 40 - (right_rect.width // 2)
+                right_y = cy - 8
+                self._draw_text_with_outline(surf, label_right, right_x, right_y)
+            except Exception:
+                pass
         except Exception:
             pass
 
     def _draw_speed_lever(self, surf):
         """Draw a vertical mechanical lever above the speed selector.
         
-        3 positions: up, center (neutral), down
+        3 positions: up (trás/pneus trás), center (neutral), down (frente/pneus frente)
         Controlled by arrow keys (UP/DOWN), independent of game state
         """
         try:
@@ -423,8 +582,19 @@ class UIManager:
             lever_position = getattr(main_module, 'lever_speed_position', 1) if main_module else 1
             
             panel = self.panel_rect
-            cx = panel.x + 202
-            cy = panel.y + 22 - 65  # offset up from selector
+            center_x, _, _, _ = self._get_selector_column_layout(surf)
+            cx = center_x + 98
+            cy = panel.y + 22 - 130  # offset up from selector (raised higher)
+            
+            # Draw title "PNEUS" above the lever
+            try:
+                title_font = pygame.font.SysFont(None, 14)
+                title_text = title_font.render('PNEUS', True, (150, 255, 170))
+                title_x = cx - title_text.get_width() // 2
+                title_y = cy - 28
+                self._draw_text_with_outline(surf, title_text, title_x, title_y)
+            except Exception:
+                pass
             
             # Alavanca vertical: UP (0), CENTER (1), DOWN (2)
             if lever_position == 0:
@@ -448,6 +618,23 @@ class UIManager:
             # Knob at lever end
             pygame.draw.circle(surf, (0, 0, 0), (ex, ey), 6)
             pygame.draw.circle(surf, (220, 220, 220), (ex, ey), 3)
+            
+            # Labels: FRENTE (Up) and TRÁS (Down) with black outline (inverted)
+            try:
+                label_font = pygame.font.SysFont(None, 14)
+                label_up = label_font.render('FRENTE', True, (255, 225, 110))
+                label_down = label_font.render('TRÁS', True, (255, 225, 110))
+                # Draw labels with white outline
+                up_rect = label_up.get_rect()
+                up_x = cx - up_rect.width // 2
+                up_y = cy - 50
+                self._draw_text_with_outline(surf, label_up, up_x, up_y)
+                down_rect = label_down.get_rect()
+                down_x = cx - down_rect.width // 2
+                down_y = cy + 40
+                self._draw_text_with_outline(surf, label_down, down_x, down_y)
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -683,6 +870,7 @@ class UIManager:
         # Draw mode selector (potentiometer-like) in the side panel.
         try:
             self._draw_mode_selector(surf)
+            self._draw_aux_selector(surf)
             self._draw_speed_selector(surf)
             self._draw_mode_lever(surf)
             self._draw_speed_lever(surf)
@@ -704,8 +892,11 @@ class UIManager:
 
                 if self._current_image_surface:
                     try:
+                        surf_h = surf.get_height()
+                        bottom_bar_top = self.panel_rect.bottom
+                        bottom_bar_h = max(1, surf_h - bottom_bar_top)
                         target_w = max(1, self.panel_rect.width)
-                        target_h = max(1, self.panel_rect.height)
+                        target_h = bottom_bar_h
                         img = self._current_image_surface
                         src_w, src_h = img.get_size()
                         # preserve aspect ratio if requested
@@ -721,12 +912,11 @@ class UIManager:
                                 img = pygame.transform.smoothscale(img, target_size)
                             else:
                                 img = pygame.transform.scale(img, target_size)
-                        # Position image as in windowed mode: bottom-centered inside panel.
+                        # Position image in the bottom bar, keeping the same X axis/alignment.
                         dx = self.panel_rect.x + (self.panel_rect.width - img.get_width()) // 2
-                        bottom_pad = 12
-                        dy = self.panel_rect.y + self.panel_rect.height - img.get_height() - bottom_pad
-                        if dy < self.panel_rect.y + 6:
-                            dy = self.panel_rect.y + 6
+                        dy = bottom_bar_top + (bottom_bar_h - img.get_height()) // 2
+                        if dy < bottom_bar_top:
+                            dy = bottom_bar_top
                         surf.blit(img, (dx, dy))
                     except Exception:
                         try:
@@ -739,7 +929,7 @@ class UIManager:
                         pygame.draw.rect(surf, (255, 255, 255), self.panel_rect)
                         pygame.draw.rect(surf, (200, 0, 0), self.panel_rect, 2)
                         label = f'Missing: img_{self._current_image_id or "<ID>"}.bmp'
-                        t = self.font.render(label, True, (0, 0, 0))
+                        t = self.font.render(label, True, (255, 255, 255))
                         tx = self.panel_rect.x + (self.panel_rect.width - t.get_width())//2
                         ty = self.panel_rect.y + (self.panel_rect.height - t.get_height())//2
                         surf.blit(t, (tx, ty))
@@ -758,8 +948,8 @@ class UIManager:
         pygame.draw.rect(surf, (255, 255, 255), self.panel_rect)
         pygame.draw.rect(surf, (200, 0, 0), self.panel_rect, 2)
         if not self.screens:
-            t = self.font.render('Panel (empty)', True, (0, 0, 0))
-            surf.blit(t, (self.panel_rect.x + 8, self.panel_rect.y + 8))
+            t = self.font.render('Panel (empty)', True, (255, 255, 255))
+            self._draw_text_with_outline(surf, t, self.panel_rect.x + 8, self.panel_rect.y + 8)
             return
         title = self.screens[self.current].get('title', '')
         # Custom main screen layout
@@ -799,11 +989,11 @@ class UIManager:
                 pygame.draw.circle(surf, (255,255,255), (ex_x, ex_y), 8)
                 excl = self.font.render('!', True, (0,70,220))
                 surf.blit(excl, (ex_x-5, ex_y-8))
-            # Mode text
+            # Mode text - always white with black outline
             mode_str = mode_text or 'Modo: desconhecido'
-            mode_render = self.font.render(mode_str, True, (0, 70, 220))
+            mode_render = self.font.render(mode_str, True, (255, 255, 255))
             mode_x = ex_x + 18
-            surf.blit(mode_render, (mode_x, top_y))
+            self._draw_text_with_outline(surf, mode_render, mode_x, top_y)
 
             # Build warnings BEFORE drawing selectable ERRO so we can know if exists
             warnings_to_show = []
@@ -824,7 +1014,7 @@ class UIManager:
             # Bottom row: right side selectable 'Menu' and arrow
             menu_str = 'Menu'
             menu_selected = (self.selected == 0)
-            menu_render = self.font.render(menu_str, True, (255,255,255) if menu_selected else (0,70,220))
+            menu_render = self.font.render(menu_str, True, (255, 255, 255))
             menu_bg_rect = menu_render.get_rect()
             menu_bg_rect.x = self.panel_rect.right - menu_render.get_width() - 24 - pad
             menu_bg_rect.y = self.panel_rect.bottom - menu_render.get_height() - pad
@@ -834,7 +1024,7 @@ class UIManager:
             if menu_selected:
                 bg_rect = pygame.Rect(menu_bg_rect.x, menu_bg_rect.y, menu_bg_rect.width, menu_bg_rect.height)
                 pygame.draw.rect(surf, (0,70,220), bg_rect)
-            surf.blit(menu_render, (menu_bg_rect.x + 4, menu_bg_rect.y))
+            self._draw_text_with_outline(surf, menu_render, menu_bg_rect.x + 4, menu_bg_rect.y)
             # Arrow (draw a clear triangular button to the right of Menu)
             try:
                 # build a rectangular area for the arrow button
@@ -863,7 +1053,7 @@ class UIManager:
             aviso_pad = pad
             for idx, (warn_text, warn_type) in enumerate(warnings_to_show):
                 aviso_label = 'Aviso: '
-                aviso_label_render = self.font.render(aviso_label, True, (0,70,220))
+                aviso_label_render = self.font.render(aviso_label, True, (255,255,255))
                 is_erro = (warn_text == 'ERRO')
                 erro_selected = (self.selected == 1 and is_erro)
                 if warn_type == 'battery':
@@ -874,12 +1064,11 @@ class UIManager:
                     bg_rect.width += 8
                     bg_rect.height += 2
                     pygame.draw.rect(surf, (0,70,220), bg_rect)
-                    surf.blit(aviso_label_render, (self.panel_rect.x + aviso_pad, bg_rect.y))
-                    surf.blit(warn_render, (bg_rect.x + 4, bg_rect.y))
+                    self._draw_text_with_outline(surf, aviso_label_render, self.panel_rect.x + aviso_pad, bg_rect.y)
+                    self._draw_text_with_outline(surf, warn_render, bg_rect.x + 4, bg_rect.y)
                 else:
                     # ERRO or custom
-                    warn_color = (255,255,255) if erro_selected else (0,70,220)
-                    warn_render = self.font.render(warn_text, True, warn_color)
+                    warn_render = self.font.render(warn_text, True, (255,255,255))
                     y_pos_label = self.panel_rect.bottom - aviso_label_render.get_height()*(len(warnings_to_show)-idx) - pad
                     x_base = self.panel_rect.x + aviso_pad
                     if erro_selected:
@@ -890,8 +1079,8 @@ class UIManager:
                         bg_rect.width += 8
                         bg_rect.height += 2
                         pygame.draw.rect(surf, (0,70,220), bg_rect)
-                        surf.blit(aviso_label_render, (x_base, y_pos_label))
-                        surf.blit(warn_render, (bg_rect.x + 4, bg_rect.y))
+                        self._draw_text_with_outline(surf, aviso_label_render, x_base, y_pos_label)
+                        self._draw_text_with_outline(surf, warn_render, bg_rect.x + 4, bg_rect.y)
                     else:
                         surf.blit(aviso_label_render, (x_base, y_pos_label))
                         surf.blit(warn_render, (x_base + aviso_label_render.get_width(), y_pos_label))
@@ -945,7 +1134,7 @@ class UIManager:
                     pygame.draw.rect(surf, (0,70,220), (btn_x, btn_y, btn_w, top_h + 4))
                 else:
                     pygame.draw.rect(surf, (255,255,255), (btn_x, btn_y, btn_w, top_h + 4))
-                surf.blit(txt0, (btn_x + (btn_w - txt_w0)//2, btn_y + 4))
+                self._draw_text_with_outline(surf, txt0, btn_x + (btn_w - txt_w0)//2, btn_y + 4)
 
             # bottom row options
             bottom_opts = opts[1:]
@@ -974,7 +1163,7 @@ class UIManager:
                     else:
                         pygame.draw.rect(surf, (255,255,255), (x, oy, w, h))
                         txt = self.font.render(label, True, (0,70,220))
-                    surf.blit(txt, (x + (w - txt.get_width())//2, oy + 4))
+                    self._draw_text_with_outline(surf, txt, x + (w - txt.get_width())//2, oy + 4)
                     x += w + gap
             return
         elif title == 'FS_MENU':
@@ -1002,7 +1191,7 @@ class UIManager:
                 self._back_arrow_rect = arrow_btn.inflate(6, 6)
             except Exception:
                 self._back_arrow_rect = None
-            surf.blit(header_render, (hx, hy))
+            self._draw_text_with_outline(surf, header_render, hx, hy)
 
             # draw stacked options centered below header
             opts = self._opts()
@@ -1019,7 +1208,7 @@ class UIManager:
                     pygame.draw.rect(surf, (0,70,220), (x, y, w, h))
                 else:
                     pygame.draw.rect(surf, (255,255,255), (x, y, w, h))
-                surf.blit(txt, (x + (w - txt.get_width())//2, y + 4))
+                self._draw_text_with_outline(surf, txt, x + (w - txt.get_width())//2, y + 4)
             return
         elif title == 'FS_ADVANCED':
             # FS_ADVANCED: Title 'Funções Avançadas' and two stacked options
@@ -1028,7 +1217,7 @@ class UIManager:
                 header_font = pygame.font.SysFont(None, int(self.font.get_height() * 1.2))
             except Exception:
                 header_font = self.font
-            header_render = header_font.render(title_text, True, (0,70,220))
+            header_render = header_font.render(title_text, True, (255,255,255))
             hx = self.panel_rect.x + (self.panel_rect.width - header_render.get_width()) // 2
             hy = self.panel_rect.y + 6
             # back arrow at top-left (same as other submenus)
@@ -1046,7 +1235,7 @@ class UIManager:
                 self._back_arrow_rect = arrow_btn.inflate(6, 6)
             except Exception:
                 self._back_arrow_rect = None
-            surf.blit(header_render, (hx, hy))
+            self._draw_text_with_outline(surf, header_render, hx, hy)
 
             # draw stacked options centered below header
             opts = self._opts()
@@ -1649,7 +1838,7 @@ class UIManager:
             return
         else:
             # Default: draw title and options horizontally
-            t = self.font.render(title, True, (0, 0, 0))
+            t = self.font.render(title, True, (255, 255, 255))
             surf.blit(t, (self.panel_rect.x + 8, self.panel_rect.y + 8))
             oy = self.panel_rect.y + 8 + t.get_height() + 8
             x = self.panel_rect.x + 8

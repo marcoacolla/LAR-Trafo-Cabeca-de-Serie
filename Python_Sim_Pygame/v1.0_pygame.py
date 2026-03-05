@@ -744,7 +744,7 @@ can_movement_value = 0  # 0 to 60000
 # 0 = esquerda/cima (diagonal/lenta)
 # 1 = centro (neutro - straight/média)
 # 2 = direita/baixo (pivotal/rápida)
-lever_mode_position = 1     # Alavanca de modo: começa neutra
+lever_mode_position = 0     # Alavanca de luzes: 0=esq, 1=dir
 lever_speed_position = 1    # Alavanca de velocidade: começa neutra
 
 # ==================== ACELERÔMETRO / INCLINAÇÃO ====================
@@ -1204,9 +1204,9 @@ while running:
         # Cima/Baixo = Posição da Alavanca Vertical
         
         if keys[pygame.K_LEFT] and not prev_keys[pygame.K_LEFT]:
-            lever_mode_position = max(0, lever_mode_position - 1)
+            lever_mode_position = 0
         if keys[pygame.K_RIGHT] and not prev_keys[pygame.K_RIGHT]:
-            lever_mode_position = min(2, lever_mode_position + 1)
+            lever_mode_position = 1
         if keys[pygame.K_UP] and not prev_keys[pygame.K_UP]:
             lever_speed_position = max(0, lever_speed_position - 1)
         if keys[pygame.K_DOWN] and not prev_keys[pygame.K_DOWN]:

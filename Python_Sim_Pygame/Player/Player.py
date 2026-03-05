@@ -1270,7 +1270,7 @@ class Player:
             bar_w = max(8, int(base_bar_w * shrink))
             bar_h = max(12, int(base_bar_h * shrink))
             padding_right = max(6, int(12 * shrink))
-            spacing = max(6, int(12 * shrink))
+            spacing = max(120, int(58 * shrink))
 
             # If a UI manager with a panel_rect exists, position inside its top-right corner
             ui_mgr = globals().get('ui')
@@ -1310,14 +1310,14 @@ class Player:
             pygame.draw.rect(screen, (120, 120, 120), (gray_x_r, bar_y, gray_w, gray_h))
 
             # draw yellow (active or dimmed)
-            yellow_col = (220, 180, 20) if active else (120, 100, 12)
+            yellow_col = (246, 205, 46) if active else (150, 125, 30)
             pygame.draw.rect(screen, yellow_col, (bar_x_l, yellow_top, bar_w, bar_h))
             pygame.draw.rect(screen, yellow_col, (bar_x_r, yellow_top, bar_w, bar_h))
 
             # fixed wheels at base of both gray bars (unchanging, drawn on top)
             try:
-                wheel_outer_r = max(8, int(bar_w * 0.55))
-                wheel_inner_r = max(4, int(wheel_outer_r * 0.55))
+                wheel_outer_r = max(12, int(bar_w * 0.9))
+                wheel_inner_r = max(6, int(wheel_outer_r * 0.58))
                 # compute a small extra downward offset so wheels sit lower
                 # remove extra downward offset and apply small upward nudge
                 extra_down = 0
@@ -1337,13 +1337,14 @@ class Player:
 
             # horizontal connector bar that links the tops of the two yellow bars
             try:
-                # thicker connector that spans from left bar left edge to right bar right edge
+                # exact connector: from outer left edge of left tower to
+                # outer right edge of right tower (no extra extension)
                 conn_h = max(6, int(bar_w * 0.5))
                 conn_left = bar_x_l
                 conn_right = bar_x_r + bar_w
                 conn_width = max(1, int(conn_right - conn_left))
-                # y coordinate that connects the tops (use current yellow_top)
-                conn_y = yellow_top - (conn_h // 2)
+                # align connector with the tower tops
+                conn_y = yellow_top
                 pygame.draw.rect(screen, yellow_col, (conn_left, conn_y, conn_width, conn_h))
             except Exception:
                 pass
@@ -1352,7 +1353,7 @@ class Player:
             try:
                 percent = int(self.icamento_cursor * 500)
                 f = pygame.font.SysFont(None, 16)
-                color = (40, 200, 40) if active else (120, 120, 120)
+                color = (228, 255, 228) if active else (214, 224, 234)
                 txt = f.render(f'{percent} mm', True, color)
                 tx = bar_x_l - txt.get_width() - 8
                 ty = bar_y + bar_h - txt.get_height() - 4
@@ -1363,9 +1364,12 @@ class Player:
                 screen.blit(txt, (tx, ty))
                 if active and self.icamento_cursor >= 0.8:
                     f2 = pygame.font.SysFont(None, 14)
-                    txt2 = f2.render('ICAMENTO READY', True, (40, 200, 40))
+                    txt2 = f2.render('ICAMENTO READY', True, (230, 255, 230))
                     tx2 = bar_x_l - txt2.get_width() - 8
                     ty2 = bar_y + bar_h - txt2.get_height() - 18
+                    for ox, oy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        outline_txt2 = f2.render('ICAMENTO READY', True, (0, 0, 0))
+                        screen.blit(outline_txt2, (tx2 + ox, ty2 + oy))
                     screen.blit(txt2, (tx2, ty2))
             except Exception:
                 pass
