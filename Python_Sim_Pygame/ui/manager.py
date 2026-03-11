@@ -61,6 +61,9 @@ class UIManager:
         self.image_scale_mode = 'nearest'
         # preserve aspect ratio when scaling
         self.image_preserve_aspect = True
+        # Vertical offset (px) applied to the ENTIRE controls group (selectors + levers).
+        # Increase to push the controls lower and give more room for the image above.
+        self.controls_group_y_offset = 120
         # second-page sensor vars
         self.anq_est = 7
         self.velocidade = 0.5
@@ -288,7 +291,7 @@ class UIManager:
             sidebar_w = panel.width if hasattr(panel, 'width') else panel[2]
 
             cx = int(sidebar_x + (sidebar_w // 2))
-            mode_cy = int(sh // 2)
+            mode_cy = int(sh // 2) + getattr(self, 'controls_group_y_offset', 0)
             gap = 92
             aux_cy = mode_cy + gap
             speed_cy = aux_cy + gap
@@ -517,10 +520,9 @@ class UIManager:
             main_module = sys.modules.get('__main__')
             lever_position = getattr(main_module, 'lever_mode_position', 0) if main_module else 0
             
-            panel = self.panel_rect
-            center_x, _, _, _ = self._get_selector_column_layout(surf)
+            center_x, mode_cy_ref, _, _ = self._get_selector_column_layout(surf)
             cx = center_x - 98
-            cy = panel.y + 22 - 130  # offset up from selector (raised higher)
+            cy = mode_cy_ref
             
             # Draw title "LUZES" above the lever
             try:
@@ -581,10 +583,9 @@ class UIManager:
             main_module = sys.modules.get('__main__')
             lever_position = getattr(main_module, 'lever_speed_position', 1) if main_module else 1
             
-            panel = self.panel_rect
-            center_x, _, _, _ = self._get_selector_column_layout(surf)
+            center_x, mode_cy_ref, _, _ = self._get_selector_column_layout(surf)
             cx = center_x + 98
-            cy = panel.y + 22 - 130  # offset up from selector (raised higher)
+            cy = mode_cy_ref
             
             # Draw title "PNEUS" above the lever
             try:
@@ -892,11 +893,14 @@ class UIManager:
 
                 if self._current_image_surface:
                     try:
-                        surf_h = surf.get_height()
-                        bottom_bar_top = self.panel_rect.bottom
-                        bottom_bar_h = max(1, surf_h - bottom_bar_top)
+                        # Image fills the area ABOVE the controls group
+                        _, _mode_cy, _, _ = self._get_selector_column_layout(surf)
+                        _ctrl_top = max(0, _mode_cy - 70)  # 70px above mode_cy for MODOS label
+                        _img_gap = 12  # px gap between image bottom and controls top
+                        image_area_top = 0
+                        image_area_h = max(1, _ctrl_top - _img_gap)
                         target_w = max(1, self.panel_rect.width)
-                        target_h = bottom_bar_h
+                        target_h = image_area_h
                         img = self._current_image_surface
                         src_w, src_h = img.get_size()
                         # preserve aspect ratio if requested
@@ -912,26 +916,29 @@ class UIManager:
                                 img = pygame.transform.smoothscale(img, target_size)
                             else:
                                 img = pygame.transform.scale(img, target_size)
-                        # Position image in the bottom bar, keeping the same X axis/alignment.
+                        # Center image horizontally and anchor it near the bottom of the image area
                         dx = self.panel_rect.x + (self.panel_rect.width - img.get_width()) // 2
-                        dy = bottom_bar_top + (bottom_bar_h - img.get_height()) // 2
-                        if dy < bottom_bar_top:
-                            dy = bottom_bar_top
+                        dy = image_area_top + image_area_h - img.get_height()
+                        if dy < image_area_top:
+                            dy = image_area_top
                         surf.blit(img, (dx, dy))
                     except Exception:
                         try:
-                            surf.blit(self._current_image_surface, (self.panel_rect.x, self.panel_rect.y))
+                            surf.blit(self._current_image_surface, (self.panel_rect.x, 0))
                         except Exception:
                             pass
                 else:
                     # draw placeholder so it's obvious no image was found
                     try:
-                        pygame.draw.rect(surf, (255, 255, 255), self.panel_rect)
-                        pygame.draw.rect(surf, (200, 0, 0), self.panel_rect, 2)
+                        _, _mode_cy, _, _ = self._get_selector_column_layout(surf)
+                        _ctrl_top = max(0, _mode_cy - 70)
+                        ph_rect = pygame.Rect(self.panel_rect.x, 0, self.panel_rect.width, max(1, _ctrl_top - 4))
+                        pygame.draw.rect(surf, (30, 30, 30), ph_rect)
+                        pygame.draw.rect(surf, (200, 0, 0), ph_rect, 2)
                         label = f'Missing: img_{self._current_image_id or "<ID>"}.bmp'
                         t = self.font.render(label, True, (255, 255, 255))
-                        tx = self.panel_rect.x + (self.panel_rect.width - t.get_width())//2
-                        ty = self.panel_rect.y + (self.panel_rect.height - t.get_height())//2
+                        tx = ph_rect.x + (ph_rect.width - t.get_width())//2
+                        ty = ph_rect.y + (ph_rect.height - t.get_height())//2
                         surf.blit(t, (tx, ty))
                         # also print a helpful debug line with the folder we looked into
                         try:
