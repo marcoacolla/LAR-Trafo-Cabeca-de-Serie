@@ -404,7 +404,13 @@ BOTTOM_BAR_HEIGHT = 92  # barra inferior
 SCREEN_W = 800 + PANEL_WIDTH
 SCREEN_H = 600
 screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))  # largura x altura
-pygame.display.set_caption("Pygame Trafo Simulator")
+pygame.display.set_caption("Trafo Simulador de Treinamento")
+try:
+    icon_path = os.path.join(os.path.dirname(__file__), 'World', 'trafo_image', 'trafo.png')
+    if os.path.exists(icon_path):
+        pygame.display.set_icon(pygame.image.load(icon_path))
+except Exception:
+    pass
 selected_map_path = None
 try:
     # show start menu and collect initial options (runs its own small event loop)
@@ -1770,8 +1776,13 @@ while running:
         mode_str = f'Mode: {player.curve_mode}  Velocidade: {speed_label} ({speed_pct}%)'
         # draw control mode + zoom + hardcore state at top-left for quick debug
         try:
-            hud_text = font.render(f'Control: {control_mode.upper()}  Zoom: {camera.scale:.2f}  Hardcore: {"ON" if hardcore_mode else "OFF"}  Joy.Lead: {"ON" if joystick_leading else "OFF"}', True, (255,255,255))
-            screen.blit(hud_text, (8, 8))
+            hud_label = f'Control: {control_mode.upper()}  Zoom: {camera.scale:.2f}  Hardcore: {"ON" if hardcore_mode else "OFF"}  Joy.Lead: {"ON" if joystick_leading else "OFF"}'
+            hud_text = font.render(hud_label, True, (255,255,255))
+            hud_outline = font.render(hud_label, True, (0,0,0))
+            hud_x, hud_y = 8, 8
+            for ox, oy in [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]:
+                screen.blit(hud_outline, (hud_x + ox, hud_y + oy))
+            screen.blit(hud_text, (hud_x, hud_y))
             # print control mode change only once to avoid log spam
             if control_mode != last_printed_control_mode:
                 # debug print removed
@@ -1958,6 +1969,9 @@ while running:
         except Exception:
             pass
 
+    # draw this overlay at the end of the frame so it stays above all UI layers
+    show_collision_overlay = False
+
     if player.is_dead():
         if hardcore_mode:
             # blocking death screen (original behavior)
@@ -1978,21 +1992,8 @@ while running:
             camera.death_screen(screen, player, reset_player)
             continue
         else:
-            # permissive death: show a non-blocking overlay but allow movement.
-            try:
-                fonte = pygame.font.SysFont(None, 48)
-                texto = fonte.render('Colisão Detectada! Mova para sair.', True, (255, 0, 0))
-                # semi-transparent background
-                bg_w = texto.get_width() + 40
-                bg_h = texto.get_height() + 24
-                bg_surf = pygame.Surface((bg_w, bg_h), pygame.SRCALPHA)
-                bg_surf.fill((0, 0, 0, 150))
-                sx = screen.get_width()//2 - bg_w//2
-                sy = screen.get_height()//2 - bg_h//2
-                screen.blit(bg_surf, (sx, sy))
-                screen.blit(texto, (sx + 20, sy + 12))
-            except Exception:
-                pass
+            # permissive death: mark overlay to be drawn after all other elements.
+            show_collision_overlay = True
             # Do not continue; allow loop to run so player can move out of collision.
 
 
@@ -2036,6 +2037,25 @@ while running:
     # Desenhar menu de pausa
     try:
         pause_menu.draw(screen)
+    except Exception:
+        pass
+
+    # collision overlay has top priority over everything (UI, images, dialogue, pause)
+    try:
+        if show_collision_overlay:
+            fonte = pygame.font.SysFont(None, 48)
+            texto = fonte.render('Colisão Detectada! Mova para sair.', True, (255, 0, 0))
+            # semi-transparent background
+            bg_w = texto.get_width() + 40
+            bg_h = texto.get_height() + 24
+            bg_surf = pygame.Surface((bg_w, bg_h), pygame.SRCALPHA)
+            bg_surf.fill((0, 0, 0, 150))
+            world_w = max(1, int(screen.get_width() - PANEL_WIDTH))
+            world_h = max(1, int(screen.get_height() - BOTTOM_BAR_HEIGHT))
+            sx = (world_w // 2) - (bg_w // 2)
+            sy = (world_h // 2) - (bg_h // 2)
+            screen.blit(bg_surf, (sx, sy))
+            screen.blit(texto, (sx + 20, sy + 12))
     except Exception:
         pass
     

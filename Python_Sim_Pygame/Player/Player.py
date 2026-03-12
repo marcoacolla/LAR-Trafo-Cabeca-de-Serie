@@ -167,7 +167,21 @@ class Player:
         try:
             cam = getattr(self, 'camera', None)
             surf = getattr(self, 'surface', None)
-            if cam is not None and surf is not None and hasattr(cam, 'world_to_screen') and hasattr(cam, 'screen_to_world'):
+            # Important: when map bounds are available, the world/map clamp above
+            # is sufficient. Applying this extra screen-projection clamp with high
+            # zoom can invert/lock movement direction near edges.
+            has_map_bounds = False
+            try:
+                has_map_bounds = (
+                    cam is not None and
+                    hasattr(cam, 'map_width') and hasattr(cam, 'map_height') and
+                    float(getattr(cam, 'map_width', 0)) > 0 and
+                    float(getattr(cam, 'map_height', 0)) > 0
+                )
+            except Exception:
+                has_map_bounds = False
+
+            if (not has_map_bounds) and cam is not None and surf is not None and hasattr(cam, 'world_to_screen') and hasattr(cam, 'screen_to_world'):
                 # Use camera viewport dimensions when available (excludes side UI panel).
                 s_w = float(getattr(cam, 'width', 0) or surf.get_width())
                 s_h = float(getattr(cam, 'height', 0) or surf.get_height())
@@ -189,7 +203,6 @@ class Player:
                     # convert back to world coordinates
                     try:
                         nx, ny = cam.screen_to_world((csx, csy))
-                        clamped = True
                     except Exception:
                         pass
         except Exception:

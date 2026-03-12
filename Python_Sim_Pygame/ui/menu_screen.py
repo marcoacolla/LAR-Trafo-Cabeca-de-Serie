@@ -13,7 +13,7 @@ def run_start_menu(screen, initial_config=None):
 	font = pygame.font.SysFont(None, 48)
 	small = pygame.font.SysFont(None, 28)
 
-	options = ['Jogar', 'Opções', 'Sair']
+	options = ['Começar', 'Opções', 'Sair']
 	selected = 0
 	while True:
 		dt = clock.tick(60)
