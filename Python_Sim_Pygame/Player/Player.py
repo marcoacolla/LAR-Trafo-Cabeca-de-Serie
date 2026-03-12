@@ -1269,8 +1269,8 @@ class Player:
             shrink = 0.45  # scale everything proportionally (very small)
             bar_w = max(8, int(base_bar_w * shrink))
             bar_h = max(12, int(base_bar_h * shrink))
-            padding_right = max(6, int(12 * shrink))
             spacing = max(120, int(58 * shrink))
+            center_nudge_x = 6  # small right nudge for visual centering
 
             # If a UI manager with a panel_rect exists, position inside its top-right corner
             ui_mgr = globals().get('ui')
@@ -1281,17 +1281,24 @@ class Player:
                     px, py, pw, ph = (pr.x, pr.y, pr.width, pr.height) if hasattr(pr, 'x') else pr
                 except Exception:
                     px, py, pw, ph = pr
-                # anchor to top-right inside panel with small top padding
-                anchor_x = px + pw - padding_right - bar_w
+                # center the whole icamento group in the side panel
+                group_w = (2 * bar_w) + spacing
+                anchor_x_l = px + max(0, (pw - group_w) // 2)
                 # push the UI down further from the very top of the panel
                 anchor_y = py + max(6, int(8 * shrink)) + int(80 * shrink)
-                bar_x_r = anchor_x
-                bar_x_l = bar_x_r - bar_w - spacing
+                bar_x_l = anchor_x_l + center_nudge_x
+                bar_x_r = bar_x_l + bar_w + spacing
                 bar_y = anchor_y
             else:
-                # fallback: use screen top-right
-                bar_x_r = screen.get_width() - bar_w - padding_right
-                bar_x_l = bar_x_r - bar_w - spacing
+                # fallback: infer right side panel from camera viewport and center inside it
+                side_x = int(getattr(self.camera, 'width', 0) or 0)
+                side_w = int(screen.get_width() - side_x)
+                if side_w <= 0:
+                    side_w = max(80, int(screen.get_width() * 0.27))
+                    side_x = screen.get_width() - side_w
+                group_w = (2 * bar_w) + spacing
+                bar_x_l = side_x + max(0, (side_w - group_w) // 2) + center_nudge_x
+                bar_x_r = bar_x_l + bar_w + spacing
                 # fallback: also lower more when anchored to screen top
                 bar_y = max(6, int(8 * shrink)) + int(80 * shrink)
 
@@ -1352,6 +1359,7 @@ class Player:
             # percent and READY to left of left bar
             try:
                 percent = int(self.icamento_cursor * 500)
+                ready_mm_threshold = 250
                 f = pygame.font.SysFont(None, 16)
                 color = (228, 255, 228) if active else (214, 224, 234)
                 txt = f.render(f'{percent} mm', True, color)
@@ -1362,7 +1370,7 @@ class Player:
                     outline_txt = f.render(f'{percent} mm', True, (0, 0, 0))
                     screen.blit(outline_txt, (tx + ox, ty + oy))
                 screen.blit(txt, (tx, ty))
-                if active and self.icamento_cursor >= 0.8:
+                if active and percent >= ready_mm_threshold:
                     f2 = pygame.font.SysFont(None, 14)
                     txt2 = f2.render('ICAMENTO READY', True, (230, 255, 230))
                     tx2 = bar_x_l - txt2.get_width() - 8

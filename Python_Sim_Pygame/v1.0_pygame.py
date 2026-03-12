@@ -1719,10 +1719,11 @@ while running:
             else:
                 # Use player's own pickup logic (works in world coords)
                 try:
-                    # Only allow pickup when in 'icamento' mode and cursor >= 0.8
+                    # Only allow pickup when in 'icamento' mode and cursor >= 250 mm
                     allow_pickup = False
                     try:
-                        if getattr(player, 'curve_mode', None) == 'icamento' and getattr(player, 'icamento_cursor', 0.0) >= 0.8:
+                        icamento_mm = int(max(0.0, min(1.0, float(getattr(player, 'icamento_cursor', 0.0)))) * 500.0)
+                        if getattr(player, 'curve_mode', None) == 'icamento' and icamento_mm >= 250:
                             allow_pickup = True
                     except Exception:
                         allow_pickup = False
