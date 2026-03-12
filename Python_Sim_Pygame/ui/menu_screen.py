@@ -4,7 +4,7 @@ import pygame
 from .screens.options_screen import run_options_menu
 
 
-def run_start_menu(screen, initial_config=None):
+def run_start_menu(screen, initial_config=None, from_pause=False):
 	cfg = {'hardcore': False, 'fullscreen': False}
 	if initial_config:
 		cfg.update(initial_config)
@@ -27,7 +27,7 @@ def run_start_menu(screen, initial_config=None):
 					selected = (selected + 1) % len(options)
 				elif ev.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
 					if selected == 0:
-								return cfg, 'map_select'
+							return cfg, 'resume' if from_pause else 'map_select'
 					elif selected == 1:
 						# open options menu
 						new_cfg = run_options_menu(screen, cfg)
@@ -48,7 +48,7 @@ def run_start_menu(screen, initial_config=None):
 					r = pygame.Rect(bx, by, btn_w, btn_h)
 					if r.collidepoint((mx, my)):
 						if i == 0:
-									return cfg, 'map_select'
+									return cfg, 'resume' if from_pause else 'map_select'
 						elif i == 1:
 							new_cfg = run_options_menu(screen, cfg)
 							if new_cfg:

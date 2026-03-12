@@ -231,7 +231,7 @@ class PauseMenu:
         self.is_open = False
         self.selected_option = 0
         self.current_menu = 'main'  # 'main' ou 'settings'
-        self.editing_option = None  # qual configuração está sendo editada (índice)
+        self.editing_option = None
         
         # Opções do menu principal
         self.main_options = [
@@ -241,16 +241,47 @@ class PauseMenu:
             ('Sair', 'exit_game'),
         ]
         
-        # Configurações (referências ao escopo global)
+        # Configurações relevantes durante a simulação
         self.settings = []
+        self._main_option_rects = []
+        self._settings_option_rects = []
     
     def update_settings_references(self):
-        """Atualiza as referências às configurações do escopo global"""
+        """Atualiza as opções de configuração disponíveis no menu de pausa."""
         self.settings = [
-            ('ACELERÔMETRO MAX VALUE', 'ACCELEROMETER_MAX_VALUE', 0, 10000),
-            ('ACELERÔMETRO RED MIN DIFF', 'ACCELEROMETER_RED_MIN_DIFF', 0, 255),
-            ('ACELERÔMETRO GB MAX DIFF', 'ACCELEROMETER_GB_MAX_DIFF', 0, 100),
+            ('Tela Cheia', 'fullscreen'),
+            ('Modo Hardcore', 'hardcore'),
+            ('Joystick Leading', 'joystick_leading'),
         ]
+
+    def _get_setting_value(self, key):
+        try:
+            if key == 'fullscreen':
+                return bool(globals().get('is_fullscreen', False))
+            if key == 'hardcore':
+                return bool(globals().get('hardcore_mode', False))
+            if key == 'joystick_leading':
+                return bool(globals().get('joystick_leading', True))
+        except Exception:
+            pass
+        return False
+
+    def _toggle_setting(self, key):
+        try:
+            if key == 'fullscreen':
+                fn = globals().get('toggle_fullscreen')
+                if callable(fn):
+                    fn()
+            elif key == 'hardcore':
+                globals()['hardcore_mode'] = not bool(globals().get('hardcore_mode', False))
+            elif key == 'joystick_leading':
+                globals()['joystick_leading'] = not bool(globals().get('joystick_leading', True))
+                try:
+                    globals()['control_mode'] = 'joystick' if globals().get('joystick_leading', True) and globals().get('joystick_available', False) else 'keyboard'
+                except Exception:
+                    pass
+        except Exception:
+            pass
     
     def open(self):
         self.is_open = True
@@ -297,29 +328,58 @@ class PauseMenu:
                 self.current_menu = 'main'
                 self.selected_option = 0
                 self.editing_option = None
-            elif self.editing_option is None:
-                # Navegação entre configurações
+            else:
                 if keys[pygame.K_UP] and not prev_keys[pygame.K_UP]:
                     self.selected_option = (self.selected_option - 1) % len(self.settings)
                 elif keys[pygame.K_DOWN] and not prev_keys[pygame.K_DOWN]:
                     self.selected_option = (self.selected_option + 1) % len(self.settings)
-                elif keys[pygame.K_RETURN] and not prev_keys[pygame.K_RETURN]:
-                    self.editing_option = self.selected_option
-            else:
-                # Editando valor
-                label, var_name, min_val, max_val = self.settings[self.editing_option]
-                current_val = globals().get(var_name, min_val)
-                
-                if keys[pygame.K_LEFT] and not prev_keys[pygame.K_LEFT]:
-                    new_val = max(min_val, current_val - 10)
-                    globals()[var_name] = new_val
-                elif keys[pygame.K_RIGHT] and not prev_keys[pygame.K_RIGHT]:
-                    new_val = min(max_val, current_val + 10)
-                    globals()[var_name] = new_val
-                elif keys[pygame.K_RETURN] and not prev_keys[pygame.K_RETURN]:
-                    self.editing_option = None
+                elif ((keys[pygame.K_RETURN] and not prev_keys[pygame.K_RETURN]) or
+                      (keys[pygame.K_LEFT] and not prev_keys[pygame.K_LEFT]) or
+                      (keys[pygame.K_RIGHT] and not prev_keys[pygame.K_RIGHT])):
+                    _, setting_key = self.settings[self.selected_option]
+                    self._toggle_setting(setting_key)
         
         return None
+
+    def handle_mouse_event(self, event):
+        """Processa clique do mouse. Retorna (handled, action)."""
+        if not self.is_open:
+            return False, None
+        try:
+            if event.type != pygame.MOUSEBUTTONDOWN or event.button != 1:
+                return False, None
+            pos = event.pos
+
+            if self.current_menu == 'main':
+                for idx, rect in enumerate(getattr(self, '_main_option_rects', [])):
+                    if rect.collidepoint(pos):
+                        self.selected_option = idx
+                        action = self.main_options[idx][1]
+                        if action == 'continue':
+                            self.close()
+                            return True, 'continue'
+                        if action == 'settings':
+                            self.current_menu = 'settings'
+                            self.selected_option = 0
+                            self.editing_option = None
+                            return True, None
+                        if action == 'exit_menu':
+                            return True, 'exit_menu'
+                        if action == 'exit_game':
+                            return True, 'exit_game'
+                        return True, None
+
+            elif self.current_menu == 'settings':
+                for idx, rect in enumerate(getattr(self, '_settings_option_rects', [])):
+                    if rect.collidepoint(pos):
+                        self.selected_option = idx
+                        _, setting_key = self.settings[idx]
+                        self._toggle_setting(setting_key)
+                        return True, None
+        except Exception:
+            return False, None
+
+        return False, None
     
     def draw(self, surface):
         """Desenha o menu de pausa"""
@@ -333,7 +393,7 @@ class PauseMenu:
         
         # Dimensões do menu
         menu_width = 400
-        menu_height = 300 if self.current_menu == 'main' else 350
+        menu_height = 300 if self.current_menu == 'main' else 260
         menu_x = (surface.get_width() - menu_width) // 2
         menu_y = (surface.get_height() - menu_height) // 2
         
@@ -349,11 +409,13 @@ class PauseMenu:
             surface.blit(title, title_rect)
             
             # Opções do menu principal
+            self._main_option_rects = []
             option_y = menu_y + 70
             for idx, (label, _) in enumerate(self.main_options):
+                option_rect = pygame.Rect(menu_x + 10, option_y - 5, menu_width - 20, 30)
+                self._main_option_rects.append(option_rect)
                 if idx == self.selected_option:
-                    bg_rect = pygame.Rect(menu_x + 10, option_y - 5, menu_width - 20, 30)
-                    pygame.draw.rect(surface, (100, 150, 255), bg_rect)
+                    pygame.draw.rect(surface, (100, 150, 255), option_rect)
                     txt = self.font.render(label, True, (255, 255, 255))
                 else:
                     txt = self.font.render(label, True, (200, 200, 200))
@@ -370,30 +432,25 @@ class PauseMenu:
             surface.blit(title, title_rect)
             
             # Configurações
+            self._settings_option_rects = []
             option_y = menu_y + 55
-            for idx, (label, var_name, min_val, max_val) in enumerate(self.settings):
-                current_val = globals().get(var_name, min_val)
+            for idx, (label, setting_key) in enumerate(self.settings):
+                current_val = self._get_setting_value(setting_key)
+                value_text = 'ON' if current_val else 'OFF'
+                option_rect = pygame.Rect(menu_x + 10, option_y - 3, menu_width - 20, 28)
+                self._settings_option_rects.append(option_rect)
                 
                 if idx == self.selected_option:
-                    bg_rect = pygame.Rect(menu_x + 10, option_y - 3, menu_width - 20, 28)
-                    pygame.draw.rect(surface, (100, 150, 255), bg_rect)
-                    
-                    if self.editing_option == idx:
-                        # Modo edição
-                        txt = self.small_font.render(f'{label}: {current_val} (editando...)', True, (255, 255, 0))
-                    else:
-                        txt = self.small_font.render(f'{label}: {current_val}', True, (255, 255, 255))
+                    pygame.draw.rect(surface, (100, 150, 255), option_rect)
+                    txt = self.small_font.render(f'{label}: {value_text}', True, (255, 255, 255))
                 else:
-                    txt = self.small_font.render(f'{label}: {current_val}', True, (200, 200, 200))
+                    txt = self.small_font.render(f'{label}: {value_text}', True, (200, 200, 200))
                 
                 surface.blit(txt, (menu_x + 20, option_y))
                 option_y += 40
             
             # Instruções
-            if self.editing_option is None:
-                hint = self.small_font.render('ENTER: Editar | ESC: Voltar', True, (150, 150, 150))
-            else:
-                hint = self.small_font.render('← → Ajustar | ENTER: Confirmar', True, (150, 150, 150))
+            hint = self.small_font.render('ENTER/←/→: Alternar | ESC: Voltar', True, (150, 150, 150))
             surface.blit(hint, (menu_x + 10, menu_y + menu_height - 25))
 
 
@@ -1054,6 +1111,7 @@ running = True
 trafo_death_expire = 0
 while running:
     dt = clock.tick(60)
+    pending_pause_action = None
     # Use event.pump() + key polling instead of pygame.event.get() to avoid
     # platform-specific exceptions inside event conversion. We detect edge
     # key presses to emulate KEYDOWN for the space key (toggle mode) and ESC
@@ -1073,6 +1131,12 @@ while running:
     try:
         for ev in pygame.event.get([pygame.MOUSEBUTTONDOWN]):
             try:
+                if pause_menu.is_open:
+                    handled, action = pause_menu.handle_mouse_event(ev)
+                    if action is not None:
+                        pending_pause_action = action
+                    if handled:
+                        continue
                 if globals().get('ui') is not None and hasattr(globals().get('ui'), 'process_mouse_event'):
                     globals().get('ui').process_mouse_event(ev)
             except Exception:
@@ -1091,7 +1155,7 @@ while running:
                 if ev.key == pygame.K_RETURN and (ev.mod & pygame.KMOD_ALT):
                     toggle_fullscreen()
                 # forward KEYDOWN to UI manager if it can accept event objects
-                if globals().get('ui') is not None and hasattr(globals().get('ui'), 'process_key_event'):
+                if (not pause_menu.is_open) and globals().get('ui') is not None and hasattr(globals().get('ui'), 'process_key_event'):
                     # keep compatibility: process_key_event expects a key constant
                     try:
                         globals().get('ui').process_key_event(ev.key)
@@ -1208,20 +1272,20 @@ while running:
         # Apenas controla a POSIÇÃO VISUAL das alavancas (sem efeito no jogo)
         # Esquerda/Direita = Posição da Alavanca Horizontal
         # Cima/Baixo = Posição da Alavanca Vertical
-        
-        if keys[pygame.K_LEFT] and not prev_keys[pygame.K_LEFT]:
-            lever_mode_position = 0
-        if keys[pygame.K_RIGHT] and not prev_keys[pygame.K_RIGHT]:
-            lever_mode_position = 1
-        if keys[pygame.K_UP] and not prev_keys[pygame.K_UP]:
-            lever_speed_position = max(0, lever_speed_position - 1)
-        if keys[pygame.K_DOWN] and not prev_keys[pygame.K_DOWN]:
-            lever_speed_position = min(2, lever_speed_position + 1)
+        if not pause_menu.is_open:
+            if keys[pygame.K_LEFT] and not prev_keys[pygame.K_LEFT]:
+                lever_mode_position = 0
+            if keys[pygame.K_RIGHT] and not prev_keys[pygame.K_RIGHT]:
+                lever_mode_position = 1
+            if keys[pygame.K_UP] and not prev_keys[pygame.K_UP]:
+                lever_speed_position = max(0, lever_speed_position - 1)
+            if keys[pygame.K_DOWN] and not prev_keys[pygame.K_DOWN]:
+                lever_speed_position = min(2, lever_speed_position + 1)
         
         # Abrir/fechar menu de pausa com P (tecla dedicada)
         if keys[pygame.K_p] and not prev_keys[pygame.K_p] and not pause_menu.is_open:
             pause_menu.open()
-        if keys[pygame.K_ESCAPE]:
+        if keys[pygame.K_ESCAPE] and not prev_keys[pygame.K_ESCAPE]:
             if pause_menu.is_open:
                 pause_menu.close()
             else:
@@ -1231,37 +1295,57 @@ while running:
 
     # Panel navigation keys (Tab to cycle screens, arrows to move, Enter to activate)
     try:
-        # use edge-detection: key pressed now and not pressed previously
-        if keys[pygame.K_TAB] and not prev_keys[pygame.K_TAB]:
-            ui.process_key_event(pygame.K_TAB)
-        if keys[pygame.K_UP] and not prev_keys[pygame.K_UP]:
-            ui.process_key_event(pygame.K_UP)
-        if keys[pygame.K_DOWN] and not prev_keys[pygame.K_DOWN]:
-            ui.process_key_event(pygame.K_DOWN)
-        if keys[pygame.K_LEFT] and not prev_keys[pygame.K_LEFT]:
-            ui.process_key_event(pygame.K_LEFT)
-        if keys[pygame.K_RIGHT] and not prev_keys[pygame.K_RIGHT]:
-            ui.process_key_event(pygame.K_RIGHT)
-        if keys[pygame.K_RETURN] and not prev_keys[pygame.K_RETURN]:
-            ui.process_key_event(pygame.K_RETURN)
+        if not pause_menu.is_open:
+            # use edge-detection: key pressed now and not pressed previously
+            if keys[pygame.K_TAB] and not prev_keys[pygame.K_TAB]:
+                ui.process_key_event(pygame.K_TAB)
+            if keys[pygame.K_UP] and not prev_keys[pygame.K_UP]:
+                ui.process_key_event(pygame.K_UP)
+            if keys[pygame.K_DOWN] and not prev_keys[pygame.K_DOWN]:
+                ui.process_key_event(pygame.K_DOWN)
+            if keys[pygame.K_LEFT] and not prev_keys[pygame.K_LEFT]:
+                ui.process_key_event(pygame.K_LEFT)
+            if keys[pygame.K_RIGHT] and not prev_keys[pygame.K_RIGHT]:
+                ui.process_key_event(pygame.K_RIGHT)
+            if keys[pygame.K_RETURN] and not prev_keys[pygame.K_RETURN]:
+                ui.process_key_event(pygame.K_RETURN)
     except Exception:
         pass
-
-    prev_keys = keys
 
     # Processar menu de pausa
     try:
         pause_menu.update_settings_references()
         menu_action = pause_menu.handle_input(keys, prev_keys)
+        if menu_action is None:
+            menu_action = pending_pause_action
         if menu_action == 'exit_menu':
-            running = False
-            break
+            try:
+                current_cfg = {
+                    'hardcore': bool(hardcore_mode),
+                    'fullscreen': bool(is_fullscreen),
+                    'joystick_leading': bool(joystick_leading),
+                }
+                pause_menu.close()
+                _cfg_res, _action = run_start_menu(screen, current_cfg, from_pause=True)
+                hardcore_mode = bool(_cfg_res.get('hardcore', hardcore_mode))
+                joystick_leading = bool(_cfg_res.get('joystick_leading', joystick_leading))
+                desired_fullscreen = bool(_cfg_res.get('fullscreen', is_fullscreen))
+                if desired_fullscreen != bool(is_fullscreen):
+                    toggle_fullscreen()
+                if _action == 'exit':
+                    pygame.quit()
+                    import sys
+                    sys.exit(0)
+            except Exception:
+                pass
         elif menu_action == 'exit_game':
             pygame.quit()
             import sys
             sys.exit(0)
     except Exception as e:
         pass
+
+    prev_keys = keys
 
     # Panel navigation keys (Tab to cycle screens, arrows to move, Enter to activate)
     # Só processa se o menu de pausa não estiver aberto
