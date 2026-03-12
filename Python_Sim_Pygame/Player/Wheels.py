@@ -78,28 +78,13 @@ class Wheel:
         self.moving_axes.updateOrientation()
 
     def setHeading(self, new_heading):
-        # If the parent is currently in diagonal mode, allow full 360° rotation
-        # (no flips / no 180° reinterpretation). This is used for manual wheel
-        # rotation in diagonal mode where the physical steering envelope is
-        # intentionally bypassed in the sim.
+        # In diagonal mode (deslizamento), enforce steering envelope only.
+        # In other modes, keep original flip interpretation behavior.
         try:
             parent_mode = getattr(self.parent, 'curve_mode', None)
         except Exception:
             parent_mode = None
 
-        if parent_mode == 'diagonal':
-            # keep canonical 0..360 range for display and behavior in diagonal
-            self.heading = float(new_heading) % 360
-            self.should_reverse = False
-            self.fixed_axes.updateOrientation()
-            self.moving_axes.updateOrientation()
-            return
-
-        # Interpret heading with physical steering limits relative to the
-        # vehicle's heading (parent.getHeading()). The forbidden sector is
-        # relative: (190..350) local degrees. If the requested heading falls
-        # in that sector, interpret it as the equivalent rotated by 180° and
-        # mark `should_reverse` so motion code can invert wheel spin if needed.
         try:
             parent_h = float(self.parent.getHeading())
         except Exception:
@@ -108,6 +93,21 @@ class Wheel:
         h_world = float(new_heading) % 360
         # local angle relative to vehicle
         rel = (h_world - parent_h) % 360
+
+        if parent_mode == 'diagonal':
+            # In diagonal mode, preserve continuity relative to the CURRENT wheel
+            # heading, then clamp to 0..180. This avoids wrap teleports both at
+            # 180 -> 0 and at 0 -> 180 when input keeps pushing past the limit.
+            current_world = float(getattr(self, 'heading', parent_h)) % 360
+            current_rel = (current_world - parent_h) % 360
+            delta = ((h_world - current_world + 180.0) % 360.0) - 180.0
+            rel = max(0.0, min(180.0, current_rel + delta))
+            self.heading = (parent_h + rel) % 360.0
+            self.should_reverse = False
+            self.fixed_axes.updateOrientation()
+            self.moving_axes.updateOrientation()
+            return
+
         flipped = False
 
         if 190 < rel < 350:

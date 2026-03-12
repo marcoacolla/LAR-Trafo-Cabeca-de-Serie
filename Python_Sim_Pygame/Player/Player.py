@@ -546,15 +546,18 @@ class Player:
         elif self.curve_mode == "diagonal":
             # In diagonal mode: A/D rotate wheel headings, W/S move along wheel direction
             WHEEL_TURN_STEP = 5.0  # degrees per tick when holding A/D
+            steering_active = False
             if keys[pygame.K_a]:
+                steering_active = True
                 for w in self.wheels:
                     w.setHeading((w.getHeading() - WHEEL_TURN_STEP) % 360)
             if keys[pygame.K_d]:
+                steering_active = True
                 for w in self.wheels:
                     w.setHeading((w.getHeading() + WHEEL_TURN_STEP) % 360)
-            if keys[pygame.K_w]:
+            if (not steering_active) and keys[pygame.K_w]:
                 self.makeMovement("forward", step=speed)
-            if keys[pygame.K_s]:
+            if (not steering_active) and keys[pygame.K_s]:
                 self.makeMovement("backward", step=speed)
 
         elif self.curve_mode == "icamento":
@@ -702,11 +705,12 @@ class Player:
 
         elif self.curve_mode == 'diagonal':
             # allow rotation of wheel headings via left_x and movement via left_y
+            steering_active = abs(robot_diagonal_control) > DEAD
             if abs(robot_diagonal_control) > DEAD:
                 WHEEL_TURN_STEP = 5.0 * robot_diagonal_control_t
                 for w in self.wheels:
                     w.setHeading((w.getHeading() + WHEEL_TURN_STEP) % 360)
-            if move_amt > 0:
+            if (not steering_active) and move_amt > 0:
                 if ry < 0:
                     self.makeMovement('backward', step=speed * move_amt)
                 else:
