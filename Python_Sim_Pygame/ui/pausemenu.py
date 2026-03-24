@@ -32,6 +32,9 @@ class PauseMenu:
         self.settings = []
         self._main_option_rects = []
         self._settings_option_rects = []
+        
+        # Internal key tracking for edge detection
+        self._last_keys = None
     
     def update_settings_references(self):
         """Atualiza as opções de configuração disponíveis no menu de pausa."""
@@ -81,6 +84,8 @@ class PauseMenu:
     
     def open(self):
         self.is_open = True
+        # Reset key tracking when menu opens
+        self._last_keys = None
         self.selected_option = 0
         self.current_menu = 'main'
         self.editing_option = None
@@ -95,47 +100,78 @@ class PauseMenu:
             self.open()
     
     def handle_input(self, keys, prev_keys):
-        """Processa entrada do teclado"""
+        """Processa entrada do teclado usando edge detection interno"""
         if not self.is_open:
             return None
         
-        # Detecta pressionamento de teclas (edge detection)
+        # Usar _last_keys para edge detection confiável
+        if self._last_keys is None:
+            self._last_keys = {}
+        
+        # Helper para detectar borda (tecla acabou de ser pressionada)
+        def is_pressed(key_code):
+            try:
+                current = bool(keys[key_code])
+                previous = bool(self._last_keys.get(key_code, False))
+                return current and not previous
+            except:
+                return False
+        
+        # Detecta pressionamento de teclas
+        result = None
+        
         if self.current_menu == 'main':
-            if keys[pygame.K_UP] and not prev_keys[pygame.K_UP]:
+            # Navegação de setas (não usa elif, são independentes)
+            if is_pressed(pygame.K_UP):
                 self.selected_option = (self.selected_option - 1) % len(self.main_options)
-            elif keys[pygame.K_DOWN] and not prev_keys[pygame.K_DOWN]:
+            if is_pressed(pygame.K_DOWN):
                 self.selected_option = (self.selected_option + 1) % len(self.main_options)
-            elif keys[pygame.K_RETURN] and not prev_keys[pygame.K_RETURN]:
+            
+            # Ações (usa elif para não executar múltiplas ações)
+            if is_pressed(pygame.K_RETURN):
                 action = self.main_options[self.selected_option][1]
                 if action == 'continue':
                     self.close()
-                    return 'continue'
+                    result = 'continue'
                 elif action == 'settings':
                     self.current_menu = 'settings'
                     self.selected_option = 0
                     self.editing_option = None
                 elif action == 'exit_menu':
-                    return 'exit_menu'
+                    result = 'exit_menu'
                 elif action == 'exit_game':
-                    return 'exit_game'
+                    result = 'exit_game'
+            elif is_pressed(pygame.K_ESCAPE):
+                self.close()
+                result = 'continue'
         
         elif self.current_menu == 'settings':
-            if keys[pygame.K_ESCAPE] and not prev_keys[pygame.K_ESCAPE]:
+            # Voltar do settings para main
+            if is_pressed(pygame.K_ESCAPE):
                 self.current_menu = 'main'
                 self.selected_option = 0
                 self.editing_option = None
-            else:
-                if keys[pygame.K_UP] and not prev_keys[pygame.K_UP]:
-                    self.selected_option = (self.selected_option - 1) % len(self.settings)
-                elif keys[pygame.K_DOWN] and not prev_keys[pygame.K_DOWN]:
-                    self.selected_option = (self.selected_option + 1) % len(self.settings)
-                elif ((keys[pygame.K_RETURN] and not prev_keys[pygame.K_RETURN]) or
-                      (keys[pygame.K_LEFT] and not prev_keys[pygame.K_LEFT]) or
-                      (keys[pygame.K_RIGHT] and not prev_keys[pygame.K_RIGHT])):
+            
+            # Navegação de setas (não usa elif, são independentes)
+            if is_pressed(pygame.K_UP):
+                self.selected_option = (self.selected_option - 1) % len(self.settings)
+            if is_pressed(pygame.K_DOWN):
+                self.selected_option = (self.selected_option + 1) % len(self.settings)
+            
+            # Alternar setting
+            if is_pressed(pygame.K_RETURN) or is_pressed(pygame.K_LEFT) or is_pressed(pygame.K_RIGHT):
+                if self.settings and self.selected_option < len(self.settings):
                     _, setting_key = self.settings[self.selected_option]
                     self._toggle_setting(setting_key)
         
-        return None
+        # Atualizar _last_keys para o próximo frame
+        try:
+            for key_code in [pygame.K_UP, pygame.K_DOWN, pygame.K_RETURN, pygame.K_ESCAPE, pygame.K_LEFT, pygame.K_RIGHT]:
+                self._last_keys[key_code] = bool(keys[key_code])
+        except:
+            pass
+        
+        return result
 
     def handle_mouse_event(self, event):
         """Processa clique do mouse. Retorna (handled, action)."""

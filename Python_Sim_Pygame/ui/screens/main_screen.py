@@ -6,5 +6,6 @@ class MainScreen(ScreenBase):
         # example options
         self.add_option(f'Mode: {getattr(player, "curve_mode", "unknown")}', None)
         self.add_option('Sensores', lambda: goto('Sensores'))
+        self.add_option('Controle', lambda: goto('Controle'))
         self.add_option('Toggle Hardcore', lambda: goto('Main'))
         self.add_option('Reset Trafo', lambda: goto('Main'))

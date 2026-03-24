@@ -16,7 +16,7 @@ def run_start_menu(screen, initial_config=None, from_pause=False):
 	if from_pause:
 		options = ['Continuar', 'Selecionar Mapa', 'Opções', 'Sair']
 	else:
-		options = ['Começar', 'Opções', 'Sair']
+		options = ['Começar', 'Controle', 'Opções', 'Sair']
 	selected = 0
 	while True:
 		dt = clock.tick(60)
@@ -44,11 +44,13 @@ def run_start_menu(screen, initial_config=None, from_pause=False):
 						if selected == 0:
 							return cfg, 'map_select'
 						elif selected == 1:
+							return cfg, 'control'
+						elif selected == 2:
 							# open options menu
 							new_cfg = run_options_menu(screen, cfg)
 							if new_cfg:
 								cfg.update(new_cfg)
-						elif selected == 2:
+						elif selected == 3:
 							return cfg, 'exit'
 			if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
 				mx, my = ev.pos
@@ -77,10 +79,12 @@ def run_start_menu(screen, initial_config=None, from_pause=False):
 							if i == 0:
 								return cfg, 'map_select'
 							elif i == 1:
+								return cfg, 'control'
+							elif i == 2:
 								new_cfg = run_options_menu(screen, cfg)
 								if new_cfg:
 									cfg.update(new_cfg)
-							elif i == 2:
+							elif i == 3:
 								return cfg, 'exit'
 
 		# draw

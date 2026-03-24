@@ -46,6 +46,7 @@ from game.rendering import (
 
 # Import UI
 from ui.menu_screen import run_start_menu
+from ui.control_screen import run_control_screen
 from ui.pausemenu import create_pause_menu
 
 try:
@@ -78,17 +79,26 @@ def show_start_menu():
     selected_map_path = None
     
     # Loop until a map is chosen or user exits
-    while _action == 'map_select':
-        if run_map_select_menu is not None:
-            sel = run_map_select_menu(screen)
-        else:
-            sel = None
-        
-        if sel:
-            selected_map_path = sel
-            break
-        
-        _cfg_res, _action = run_start_menu(screen, _cfg_res)
+    while _action == 'map_select' or _action == 'control':
+        if _action == 'control':
+            # Show control screen
+            _control_action = run_control_screen(screen)
+            if _control_action == 'exit':
+                pygame.quit()
+                sys.exit(0)
+            # Return to start menu
+            _cfg_res, _action = run_start_menu(screen, _cfg_res)
+        elif _action == 'map_select':
+            if run_map_select_menu is not None:
+                sel = run_map_select_menu(screen)
+            else:
+                sel = None
+            
+            if sel:
+                selected_map_path = sel
+                break
+            
+            _cfg_res, _action = run_start_menu(screen, _cfg_res)
     
     if _action == 'exit':
         pygame.quit()
@@ -159,6 +169,7 @@ def setup_ui_screens():
     ui.add_screen('Main', [
         (f'Mode: {getattr(player, "curve_mode", "unknown")}', None),
         ('Sensores', lambda: goto_screen_by_title('Sensores')),
+        ('Controle', lambda: goto_screen_by_title('Controle')),
         ('Toggle Hardcore', toggle_hardcore),
         ('Reset Trafo', reset_trafo),
     ])
@@ -188,6 +199,11 @@ def setup_ui_screens():
                 break
     except Exception:
         pass
+
+    # Controle screen (with back button)
+    ui.add_screen('Controle', [
+        ('Voltar', lambda: goto_screen_by_title('Main')),
+    ])
 
     # Make Menu_01 non-navigable
     try:
@@ -383,6 +399,8 @@ if start_menu_desired_fullscreen and not is_fullscreen:
 
 # Initialize input handler
 input_handler = InputHandler()
+# Initialize previous keys state to enable edge detection from the start
+input_handler.update_previous_keys(pygame.key.get_pressed())
 
 # ============================================================================
 # MAIN GAME LOOP
