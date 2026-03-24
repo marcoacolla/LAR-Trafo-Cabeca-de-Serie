@@ -12,7 +12,7 @@ PLAYER_COLOR = (255, 220, 0)  # preto
 class Player:
     
     
-    step = 1.0
+    step = 0.6
     is_transitioning = False
     # transition state
     transition_start_ms = None
@@ -22,8 +22,8 @@ class Player:
 
     # --- NOVO ---
     key_hold_time = {"A": 0, "D": 0}
-    max_hold_boost = 4.0   # multiplicador máximo (4x mais rápido)
-    accel_rate = 0.004     # quanto mais rápido acelera (ajuste fino)
+    max_hold_boost = 2.0   # multiplicador máximo para mudança de curva
+    accel_rate = 0.002     # aceleração do hold de direção (mais suave)
 
     def __init__(self, spawnpoint, surface, camera):
         self.x = spawnpoint[0]
@@ -49,8 +49,8 @@ class Player:
         # speed_modes contains multipliers: 'rápida' is 100%, 'média' 60%, 'lenta' 30%
         # Note: the user asked that the new fastest mode be slower than the previous
         # default; to preserve that intent the base_speed can be adjusted if desired.
-        self.base_speed = 3.0
-        self.speed_modes = {"rápida": 1.0, "média": 0.6, "lenta": 0.3}
+        self.base_speed = 2.2
+        self.speed_modes = {"rápida": 0.9, "média": 0.55, "lenta": 0.28}
         self.speed_mode = "rápida"
 
         self.icr_bias = 0.5  # Bias do ICR (0.0 = esquerda, 1.0 = direita)
@@ -510,10 +510,10 @@ class Player:
                 self.key_hold_time["A"] = 0
                 self.key_hold_time["D"] = 0
             if keys[pygame.K_q]:
-                self.icr_bias = min(1.0, self.icr_bias + (0.1 * dt_scale))
+                self.icr_bias = min(1.0, self.icr_bias + (0.05 * dt_scale))
                 isChangingCourse = True
             if keys[pygame.K_e]:
-                self.icr_bias = max(0.0, self.icr_bias - (0.1 * dt_scale))
+                self.icr_bias = max(0.0, self.icr_bias - (0.05 * dt_scale))
                 isChangingCourse = True
             
             if keys[pygame.K_w]:  # cima
@@ -561,7 +561,7 @@ class Player:
 
         elif self.curve_mode == "diagonal":
             # In diagonal mode: A/D rotate wheel headings, W/S move along wheel direction
-            WHEEL_TURN_STEP = 5.0 * dt_scale  # degrees per tick at 60fps baseline
+            WHEEL_TURN_STEP = 2.5 * dt_scale  # degrees por tick (baseline 60fps)
             steering_active = False
             if keys[pygame.K_a]:
                 steering_active = True
@@ -579,7 +579,7 @@ class Player:
         elif self.curve_mode == "icamento":
             # In icamento mode: allow normal straight movement while
             # W/S also move the icamento cursor (used by a UI element).
-            CURSOR_STEP = 0.025 * max(1.0, speed / 3.0) * dt_scale
+            CURSOR_STEP = 0.015 * max(1.0, speed / 3.0) * dt_scale
             if keys[pygame.K_w]:
                 # move cursor up
                 self.icamento_cursor = max(0.0, self.icamento_cursor - CURSOR_STEP)
@@ -728,7 +728,7 @@ class Player:
             # allow rotation of wheel headings via left_x and movement via left_y
             steering_active = abs(robot_diagonal_control) > DEAD
             if abs(robot_diagonal_control) > DEAD:
-                WHEEL_TURN_STEP = 5.0 * robot_diagonal_control_t * dt_scale
+                WHEEL_TURN_STEP = 2.5 * robot_diagonal_control_t * dt_scale
                 for w in self.wheels:
                     w.setHeading((w.getHeading() + WHEEL_TURN_STEP) % 360)
             if (not steering_active) and move_amt > 0:
@@ -739,7 +739,7 @@ class Player:
 
         elif self.curve_mode == 'icamento':
             # left_y moves the cursor; also moves vehicle
-            CURSOR_SENS = 0.035 * dt_scale
+            CURSOR_SENS = 0.02 * dt_scale
             if abs(robot_icamento_control) > DEAD:
                 # negative ly -> move up (decrease cursor)
                 self.icamento_cursor = max(0.0, min(1.0, self.icamento_cursor + (-robot_icamento_control_t) * CURSOR_SENS))
@@ -1259,7 +1259,7 @@ class Player:
             # Use a constant angular change per movement step so rotation speed
             # is independent of the turning radius. We'll choose a small constant
             # angular increment (degrees) per call and convert to radians.
-            DEGREES_PER_STEP = 2.0  # degrees per movement step (tweakable)
+            DEGREES_PER_STEP = 1.2  # degrees per movement step (mais suave)
             base_dtheta = math.radians(DEGREES_PER_STEP)
 
             # Limit the angular change so the arc length per movement call
