@@ -392,8 +392,14 @@ clock = pygame.time.Clock()
 running = True
 trafo_caused_death = False
 
+# Fixed timestep: 60 ticks por segundo para lógica
+LOGIC_TICK_TIME = 16.67  # ms (1000 / 60)
+accumulated_time = 0.0   # acumulador de tempo real
+
 while running:
-    dt = clock.tick(TARGET_FPS)
+    # Render loop sem limite de FPS. A lógica usa fixed timestep de 60 ticks.
+    dt_real = clock.tick(0)  # tempo real em ms desde último frame
+    accumulated_time += dt_real
     pending_pause_action = None
     
     # ========== EVENT HANDLING ==========
@@ -452,76 +458,267 @@ while running:
     except Exception:
         pass
 
-    trafo_caused_death = False
+    # ========== FIXED LOGIC TIMESTEP (60 ticks/segundo) ==========
+    # Processa quantos ticks de lógica forem necessários
+    while accumulated_time >= LOGIC_TICK_TIME:
+        accumulated_time -= LOGIC_TICK_TIME
+        dt = LOGIC_TICK_TIME  # cada tick sempre usa 16.67ms
+        
+        # Incrementa contador de ticks lógicos (sincroniza pisca de alertas, etc.)
+        player.logic_tick_count += 1
+        trafo_caused_death = False
 
-    # Process mode change from joystick
-    try:
-        if getattr(joystick_controller, 'available', False) and getattr(joystick_controller, 'hasChangedMode', False):
+        # Process mode change from joystick
+        try:
+            if getattr(joystick_controller, 'available', False) and getattr(joystick_controller, 'hasChangedMode', False):
+                try:
+                    sel = getattr(joystick_controller, 'currentMode', 0)
+                    mode_map = {
+                        1: 'straight',
+                        2: 'diagonal',
+                        4: 'pivotal',
+                        8: 'icamento'
+                    }
+                    new_mode = mode_map.get(sel)
+                    if new_mode:
+                        try:
+                            player.setMode(new_mode)
+                        except Exception:
+                            pass
+                finally:
+                    joystick_controller.hasChangedMode = False
+        except Exception:
+            pass
+
+        # Process speed change from joystick
+        try:
+            if getattr(joystick_controller, 'available', False) and getattr(joystick_controller, 'hasChangedSpeed', False):
+                try:
+                    sel = getattr(joystick_controller, 'currentSpeed', 0)
+                    speed_map = {
+                        0: 'rápida',
+                        1: 'média',
+                        3: 'lenta'
+                    }
+                    new_speed = speed_map.get(sel)
+                    if new_speed:
+                        player.set_speed_mode(new_speed)
+                finally:
+                    joystick_controller.hasChangedSpeed = False
+        except Exception:
+            pass
+
+        # ========== INPUT PROCESSING ==========
+        keys = pygame.key.get_pressed()
+        
+        # Process keyboard input
+        try:
+            input_handler.process_space_key(keys, player)
+            input_handler.process_speed_keys(keys, player)
+            input_handler.process_lever_keys(keys, lever_state)
+            
+            if not pause_menu.is_open:
+                pause_result = input_handler.process_pause_keys(keys, pause_menu)
+                if pause_result == 'exit_game':
+                    running = False
+            
+            if not pause_menu.is_open:
+                input_handler.process_ui_navigation_keys(keys, ui)
+            
+            if not pause_menu.is_open:
+                zoom_changed = input_handler.process_zoom_keys(keys, camera, dt)
+                if zoom_changed:
+                    camera.update(player)
+        except Exception:
+            pass
+
+        input_handler.update_previous_keys(keys)
+
+        # ========== GAME LOGIC (executado a 60 ticks/segundo) ==========
+        
+        # Calculate movement speed
+        try:
+            move_speed = player.base_speed * player.get_speed_multiplier()
+        except Exception:
+            move_speed = 3
+        
+        # Process movement
+        if not pause_menu.is_open:
             try:
-                sel = getattr(joystick_controller, 'currentMode', 0)
-                mode_map = {
-                    1: 'straight',
-                    2: 'diagonal',
-                    4: 'pivotal',
-                    8: 'icamento'
-                }
-                new_mode = mode_map.get(sel)
-                if new_mode:
+                control_mode = input_handler.process_movement(
+                    keys, player, joystick_controller,
+                    joystick_leading, move_speed, dt_ms=dt
+                )
+            except Exception:
+                pass
+
+        # Process dialogue manager
+        try:
+            if dialogue_manager.enabled and hasattr(player, 'get_body_polygon'):
+                dialogue_manager.process_player_polygon(player.get_body_polygon(), auto_print=False)
+        except Exception:
+            pass
+
+        # Calculate accelerometer and determine light alerts
+        try:
+            current_accelerometer_value = calculate_accelerometer_value(player, map_image)
+            icamento_mm = get_icamento_mm(player)
+            
+            chosen_mode, chosen_hz, chosen_level, fixed_light_mode = determine_light_mode(
+                current_accelerometer_value, icamento_mm, dialogue_manager
+            )
+
+            if fixed_light_mode == 'alerta':
+                player.lights[0] = False
+                player.lights[2] = True
+            elif fixed_light_mode == 'critico':
+                player.lights[2] = False
+                player.lights[0] = True
+            elif chosen_mode is not None:
+                if chosen_mode == 'critico':
+                    player.lights[2] = False
+                else:
+                    player.lights[0] = False
+                player.blink_alert(chosen_hz, chosen_mode)
+            else:
+                player.lights[0] = False
+                player.lights[2] = False
+
+            # Send accelerometer via CAN if available
+            if getattr(joystick_controller, 'available', False) and hasattr(joystick_controller, 'send_inclinometer'):
+                joystick_controller.send_inclinometer(current_accelerometer_value)
+        except Exception:
+            current_accelerometer_value = 0
+            try:
+                player.lights[0] = False
+                player.lights[2] = False
+            except Exception:
+                pass
+
+        # Update camera
+        camera.update(player)
+
+        # ========== TRAFO INTERACTIONS ==========
+        try:
+            trafo.update(dt)
+            
+            if not trafo.picked and player.state == 'vivo':
+                # Check trafo collision with player
+                trafo_rect = trafo.get_collision_rect() if hasattr(trafo, 'get_collision_rect') else trafo.get_rect()
+                parts = player.get_rotated_hitbox()
+                trafo_collision = False
+
+                try:
+                    px, py = player.getPosition()
+                    heading_rad = math.radians(player.getHeading())
+                    forward_vec = (math.sin(heading_rad), -math.cos(heading_rad))
+                except Exception:
+                    px = py = 0.0
+                    forward_vec = (0.0, -1.0)
+
+                for idx, (kind, data) in enumerate(parts):
+                    if kind == 'wheel':
+                        try:
+                            hit = poly_rect_collision(data, trafo_rect)
+                        except Exception:
+                            hit = False
+
+                        if not hit:
+                            try:
+                                xs = [p[0] for p in data]
+                                ys = [p[1] for p in data]
+                                wmin = min(xs); wmax = max(xs)
+                                hmin = min(ys); hmax = max(ys)
+                                wheel_aabb = pygame.Rect(wmin, hmin, wmax - wmin, hmax - hmin)
+                                if wheel_aabb.colliderect(trafo_rect):
+                                    hit = True
+                            except Exception:
+                                pass
+
+                        if hit:
+                            trafo_collision = True
+                            break
+
+                    elif kind in ('edge', 'line'):
+                        try:
+                            p1, p2 = data
+                            midx = (p1[0] + p2[0]) * 0.5
+                            midy = (p1[1] + p2[1]) * 0.5
+                            vx = midx - px
+                            vy = midy - py
+                            dot = vx * forward_vec[0] + vy * forward_vec[1]
+                            
+                            if dot > 0:
+                                if line_rect_collision(p1, p2, trafo_rect):
+                                    trafo_collision = True
+                                    break
+                        except Exception:
+                            pass
+
+                if trafo_collision:
                     try:
-                        player.setMode(new_mode)
+                        player.set_dead()
+                        trafo_caused_death = True
+                        expire = pygame.time.get_ticks() + TRAFO_DEATH_LOCK_MS
+                        trafo_death_expire = expire
+                        try:
+                            player.death_lock_until = expire
+                        except Exception:
+                            pass
                     except Exception:
                         pass
-            finally:
-                joystick_controller.hasChangedMode = False
-    except Exception:
-        pass
+                else:
+                    # Try pickup
+                    if can_pickup_trafo(player):
+                        try:
+                            picked = player.try_pickup(trafo)
+                            if picked:
+                                trafo_pickup_time = pygame.time.get_ticks()
+                        except Exception:
+                            pass
+        except Exception:
+            pass
 
-    # Process speed change from joystick
-    try:
-        if getattr(joystick_controller, 'available', False) and getattr(joystick_controller, 'hasChangedSpeed', False):
+        # ========== COLLISION WITH MAP ==========
+        collided = check_player_collision_with_map(player, collision_grid, map_image)
+        
+        if collided:
+            player.set_dead()
+        elif player.is_dead() and not hardcore_mode:
             try:
-                sel = getattr(joystick_controller, 'currentSpeed', 0)
-                speed_map = {
-                    0: 'rápida',
-                    1: 'média',
-                    3: 'lenta'
-                }
-                new_speed = speed_map.get(sel)
-                if new_speed:
-                    player.set_speed_mode(new_speed)
-            finally:
-                joystick_controller.hasChangedSpeed = False
-    except Exception:
-        pass
+                now_ms = pygame.time.get_ticks()
+            except Exception:
+                now_ms = 0
+            
+            if now_ms > trafo_death_expire:
+                try:
+                    player.set_alive()
+                except Exception:
+                    pass
 
-    # ========== INPUT PROCESSING ==========
-    keys = pygame.key.get_pressed()
-    
-    # Process keyboard input
+    # ========== EVENT HANDLING E PAUSE MENU (executados FORA do loop de lógica) ==========
+    # Keyboard events
     try:
-        input_handler.process_space_key(keys, player)
-        input_handler.process_speed_keys(keys, player)
-        input_handler.process_lever_keys(keys, lever_state)
-        
-        if not pause_menu.is_open:
-            pause_result = input_handler.process_pause_keys(keys, pause_menu)
-            if pause_result == 'exit_game':
-                running = False
-        
-        if not pause_menu.is_open:
-            input_handler.process_ui_navigation_keys(keys, ui)
-        
-        if not pause_menu.is_open:
-            zoom_changed = input_handler.process_zoom_keys(keys, camera, dt)
-            if zoom_changed:
-                camera.update(player)
+        for ev in pygame.event.get([pygame.KEYDOWN]):
+            try:
+                if ev.key == pygame.K_F11:
+                    toggle_fullscreen()
+                if ev.key == pygame.K_RETURN and (ev.mod & pygame.KMOD_ALT):
+                    toggle_fullscreen()
+                if (not pause_menu.is_open) and globals().get('ui') is not None and hasattr(globals().get('ui'), 'process_key_event'):
+                    try:
+                        globals().get('ui').process_key_event(ev.key)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
     except Exception:
         pass
 
     # Process pause menu
     try:
         pause_menu.update_settings_references()
-        menu_action = pause_menu.handle_input(keys, input_handler.prev_keys)
+        menu_action = pause_menu.handle_input(pygame.key.get_pressed(), input_handler.prev_keys)
         if menu_action is None:
             menu_action = pending_pause_action
         
@@ -537,6 +734,46 @@ while running:
                 hardcore_mode = bool(_cfg_res.get('hardcore', hardcore_mode))
                 joystick_leading = bool(_cfg_res.get('joystick_leading', joystick_leading))
                 desired_fullscreen = bool(_cfg_res.get('fullscreen', is_fullscreen))
+                if _action == 'map_select':
+                    _selected = None
+                    if run_map_select_menu is not None:
+                        try:
+                            _selected = run_map_select_menu(screen)
+                        except Exception:
+                            _selected = None
+
+                    if _selected:
+                        selected_map_path = _selected
+                        game_state = setup_game_objects(screen=None, selected_map_path=selected_map_path)
+
+                        screen = game_state['screen']
+                        map_image = game_state['map_image']
+                        collision_grid = game_state['collision_grid']
+                        dialogue_manager = game_state['dialogue_manager']
+                        player = game_state['player']
+                        camera = game_state['camera']
+                        trafo = game_state['trafo']
+                        ui = game_state['ui']
+                        joystick_controller = game_state['joystick_controller']
+                        joystick_available = game_state['joystick_available']
+                        spawn_point = game_state['spawn_point']
+
+                        setup_ui_screens()
+
+                        try:
+                            _windowed_size = screen.get_size()
+                        except Exception:
+                            _windowed_size = (SCREEN_W, SCREEN_H)
+                        is_fullscreen = False
+
+                        control_mode = CONTROL_MODE_JOYSTICK if (joystick_leading and joystick_available) else CONTROL_MODE_KEYBOARD
+                        last_printed_control_mode = control_mode
+
+                        can_movement_value = CAN_MOVEMENT_NEUTRAL
+                        current_accelerometer_value = 0
+                        trafo_pickup_time = 0
+                        trafo_death_expire = 0
+
                 if desired_fullscreen != bool(is_fullscreen):
                     toggle_fullscreen()
                 if _action == 'exit':
@@ -550,170 +787,9 @@ while running:
     except Exception:
         pass
 
-    input_handler.update_previous_keys(keys)
-
-    # ========== GAME LOGIC ==========
+    # ========== RENDERING (executado a cada frame, sem limite de FPS) ==========
     
-    # Calculate movement speed
-    try:
-        move_speed = player.base_speed * player.get_speed_multiplier()
-    except Exception:
-        move_speed = 3
-    
-    # Process movement
-    if not pause_menu.is_open:
-        try:
-            control_mode = input_handler.process_movement(
-                keys, player, joystick_controller,
-                joystick_leading, move_speed
-            )
-        except Exception:
-            pass
-
-    # Process dialogue manager
-    try:
-        if dialogue_manager.enabled and hasattr(player, 'get_body_polygon'):
-            dialogue_manager.process_player_polygon(player.get_body_polygon(), auto_print=False)
-    except Exception:
-        pass
-
-    # Calculate accelerometer and determine light alerts
-    try:
-        current_accelerometer_value = calculate_accelerometer_value(player, map_image)
-        icamento_mm = get_icamento_mm(player)
-        
-        chosen_mode, chosen_hz, chosen_level, fixed_light_mode = determine_light_mode(
-            current_accelerometer_value, icamento_mm, dialogue_manager
-        )
-
-        if fixed_light_mode == 'alerta':
-            player.lights[0] = False
-            player.lights[2] = True
-        elif fixed_light_mode == 'critico':
-            player.lights[2] = False
-            player.lights[0] = True
-        elif chosen_mode is not None:
-            if chosen_mode == 'critico':
-                player.lights[2] = False
-            else:
-                player.lights[0] = False
-            player.blink_alert(chosen_hz, chosen_mode)
-        else:
-            player.lights[0] = False
-            player.lights[2] = False
-
-        # Send accelerometer via CAN if available
-        if getattr(joystick_controller, 'available', False) and hasattr(joystick_controller, 'send_inclinometer'):
-            joystick_controller.send_inclinometer(current_accelerometer_value)
-    except Exception:
-        current_accelerometer_value = 0
-        try:
-            player.lights[0] = False
-            player.lights[2] = False
-        except Exception:
-            pass
-
-    # Update camera
-    camera.update(player)
-
-    # ========== TRAFO INTERACTIONS ==========
-    try:
-        trafo.update(dt)
-        
-        if not trafo.picked and player.state == 'vivo':
-            # Check trafo collision with player
-            trafo_rect = trafo.get_collision_rect() if hasattr(trafo, 'get_collision_rect') else trafo.get_rect()
-            parts = player.get_rotated_hitbox()
-            trafo_collision = False
-
-            try:
-                px, py = player.getPosition()
-                heading_rad = math.radians(player.getHeading())
-                forward_vec = (math.sin(heading_rad), -math.cos(heading_rad))
-            except Exception:
-                px = py = 0.0
-                forward_vec = (0.0, -1.0)
-
-            for idx, (kind, data) in enumerate(parts):
-                if kind == 'wheel':
-                    try:
-                        hit = poly_rect_collision(data, trafo_rect)
-                    except Exception:
-                        hit = False
-
-                    if not hit:
-                        try:
-                            xs = [p[0] for p in data]
-                            ys = [p[1] for p in data]
-                            wmin = min(xs); wmax = max(xs)
-                            hmin = min(ys); hmax = max(ys)
-                            wheel_aabb = pygame.Rect(wmin, hmin, wmax - wmin, hmax - hmin)
-                            if wheel_aabb.colliderect(trafo_rect):
-                                hit = True
-                        except Exception:
-                            pass
-
-                    if hit:
-                        trafo_collision = True
-                        break
-
-                elif kind in ('edge', 'line'):
-                    try:
-                        p1, p2 = data
-                        midx = (p1[0] + p2[0]) * 0.5
-                        midy = (p1[1] + p2[1]) * 0.5
-                        vx = midx - px
-                        vy = midy - py
-                        dot = vx * forward_vec[0] + vy * forward_vec[1]
-                        
-                        if dot > 0:
-                            if line_rect_collision(p1, p2, trafo_rect):
-                                trafo_collision = True
-                                break
-                    except Exception:
-                        pass
-
-            if trafo_collision:
-                try:
-                    player.set_dead()
-                    trafo_caused_death = True
-                    expire = pygame.time.get_ticks() + TRAFO_DEATH_LOCK_MS
-                    trafo_death_expire = expire
-                    try:
-                        player.death_lock_until = expire
-                    except Exception:
-                        pass
-                except Exception:
-                    pass
-            else:
-                # Try pickup
-                if can_pickup_trafo(player):
-                    try:
-                        picked = player.try_pickup(trafo)
-                        if picked:
-                            trafo_pickup_time = pygame.time.get_ticks()
-                    except Exception:
-                        pass
-    except Exception:
-        pass
-
-    # ========== COLLISION WITH MAP ==========
-    collided = check_player_collision_with_map(player, collision_grid, map_image)
-    
-    if collided:
-        player.set_dead()
-    elif player.is_dead() and not hardcore_mode:
-        try:
-            now_ms = pygame.time.get_ticks()
-        except Exception:
-            now_ms = 0
-        
-        if now_ms > trafo_death_expire:
-            try:
-                player.set_alive()
-            except Exception:
-                pass
-
+    # Verifica morte do jogador fora do loop de lógica
     show_collision_overlay = False
     if player.is_dead():
         if hardcore_mode:
@@ -735,8 +811,7 @@ while running:
             continue
         else:
             show_collision_overlay = True
-
-    # ========== RENDERING ==========
+    
     screen.fill(COLOR_SKY_BLUE)
     
     # Setup world view

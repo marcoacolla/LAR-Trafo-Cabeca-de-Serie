@@ -12,14 +12,14 @@ def run_options_menu(screen, initial_config=None):
     font = pygame.font.SysFont(None, 36)
     running = True
     selected = 0
-    options = ['Modo Hardcore', 'Tela Cheia', 'Joystick Leading', 'Voltar']
+    options = ['Modo Hardcore', 'Joystick Leading', 'Voltar']
     while running:
         dt = clock.tick(60)
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
                 return cfg
             if ev.type == pygame.KEYDOWN:
-                if ev.key in (pygame.K_ESCAPE, pygame.K_RETURN) and selected == 3:
+                if ev.key in (pygame.K_ESCAPE, pygame.K_RETURN) and selected == 2:
                     return cfg
                 if ev.key == pygame.K_UP:
                     selected = (selected - 1) % len(options)
@@ -29,10 +29,8 @@ def run_options_menu(screen, initial_config=None):
                     if selected == 0:
                         cfg['hardcore'] = not cfg['hardcore']
                     elif selected == 1:
-                        cfg['fullscreen'] = not cfg['fullscreen']
-                    elif selected == 2:
                         cfg['joystick_leading'] = not cfg['joystick_leading']
-                    elif selected == 3:
+                    elif selected == 2:
                         return cfg
             if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
                 mx, my = ev.pos
@@ -50,10 +48,8 @@ def run_options_menu(screen, initial_config=None):
                         if i == 0:
                             cfg['hardcore'] = not cfg['hardcore']
                         elif i == 1:
-                            cfg['fullscreen'] = not cfg['fullscreen']
-                        elif i == 2:
                             cfg['joystick_leading'] = not cfg['joystick_leading']
-                        elif i == 3:
+                        elif i == 2:
                             return cfg
 
         # draw
@@ -77,8 +73,6 @@ def run_options_menu(screen, initial_config=None):
             if i == 0:
                 text = f"{label}: {'ON' if cfg['hardcore'] else 'OFF'}"
             elif i == 1:
-                text = f"{label}: {'ON' if cfg['fullscreen'] else 'OFF'}"
-            elif i == 2:
                 text = f"{label}: {'ON' if cfg['joystick_leading'] else 'OFF'}"
             else:
                 text = label

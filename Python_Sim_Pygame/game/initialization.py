@@ -143,7 +143,7 @@ def setup_game_objects(screen, selected_map_path=None):
     
     # Initialize dialogue manager
     dialogue_manager = init_dialogue_manager(
-        os.path.dirname(__file__),
+        os.path.dirname(os.path.dirname(__file__)),
         map_path,
         map_image
     )

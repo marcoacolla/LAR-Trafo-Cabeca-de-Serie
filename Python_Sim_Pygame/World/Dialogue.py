@@ -20,12 +20,11 @@ class DialogueManager:
 		"Mapa Tutorial Alertas dos Sensores": {
 			1: (255, 255, 0),   # amarelo
 			2: (255, 108, 0),   # laranja
-			3: (0, 0, 255),     # azul
-			4: (0, 255, 255),   # ciano
-			5: (255, 0, 255),   # rosa
-			6: (144, 0, 255),   # roxo
-			7: (150, 255, 0),     # verde lima
-			8: (0, 255, 102),     # azul marinho
+			3: (0, 255, 255),   # ciano
+			4: (0, 0, 255),     # azul
+			5: (144, 0, 255),   # roxo
+			6: (255, 0, 255),   # rosa
+			7: (150, 255, 0),    
 		},
 	}
 
@@ -43,7 +42,6 @@ class DialogueManager:
 			5: "Alerta de pressao, atenção as luzes do Trafo. Verifique os sensores de pressão e o sistema hidráulico.",
 			6: "Alerta de pressão crítica, atenção as luzes do Trafo. Verifique os sensores de pressão e o sistema hidráulico imediatamente.",
 			7: "Alerta de baixo óleo, atenção as luzes do Trafo. Verifique os níveis de óleo e o sistema de lubrificação.",
-			8: "Alerta de óleo crítico, atenção as luzes do Trafo. Verifique os níveis de óleo e o sistema de lubrificação imediatamente.",
 		},
 		"fase_3": {
 			1: "[Fase 3] Diálogo 1: Área operacional avançada.",
@@ -66,6 +64,11 @@ class DialogueManager:
 		self.last_dialog_id: int = 0
 		self.active_dialog_id: int = 0
 		self.active_dialog_text: str = ""
+		
+		# Grid-based spatial hashing para detecção de eventos
+		self.grid_cell_size: int = 32  # tamanho de cada célula em pixels
+		self.event_grid: Dict[Tuple[int, int], int] = {}  # (grid_x, grid_y) -> dialog_id
+		self._build_event_grid()
 
 	@property
 	def enabled(self) -> bool:
@@ -80,7 +83,8 @@ class DialogueManager:
 		return phase_dialogs.get(dialog_id, f"[Sem texto] diálogo {dialog_id} ({phase_key})")
 
 	def process_player_polygon(self, polygon: Sequence[Tuple[float, float]], auto_print: bool = False) -> int:
-		current_dialog_id = self.detect_dialog_from_polygon(polygon)
+		# Usa grid-based detection para máxima performance
+		current_dialog_id = self._detect_dialog_from_grid(polygon)
 		phase_dialogs = self.DIALOG_TEXTS_BY_PHASE.get(self.phase, {})
 
 		if current_dialog_id != self.last_dialog_id:
@@ -180,6 +184,100 @@ class DialogueManager:
 			return event_map
 		except Exception:
 			return None
+
+	def _build_event_grid(self) -> None:
+		"""Pré-processa o EventMap em uma grid espacial para detecção O(1).
+		Divide o mapa em células e armazena o dialog_id encontrado em cada célula.
+		"""
+		if self.event_map_image is None:
+			return
+
+		try:
+			width = self.event_map_image.get_width()
+			height = self.event_map_image.get_height()
+			cell_size = self.grid_cell_size
+
+			# Itera sobre cada célula da grid
+			for grid_y in range(0, height, cell_size):
+				for grid_x in range(0, width, cell_size):
+					# Amostra 4 pontos estratégicos da célula
+					sample_points = [
+						(grid_x + cell_size // 4, grid_y + cell_size // 4),
+						(grid_x + 3 * cell_size // 4, grid_y + cell_size // 4),
+						(grid_x + cell_size // 4, grid_y + 3 * cell_size // 4),
+						(grid_x + 3 * cell_size // 4, grid_y + 3 * cell_size // 4),
+					]
+
+					dialog_id = 0
+					for px, py in sample_points:
+						if 0 <= px < width and 0 <= py < height:
+							try:
+								color = self.event_map_image.get_at((int(px), int(py)))
+								dialog_id = self._classify_dialog_color(color)
+								if dialog_id != 0:
+									break
+							except Exception:
+								pass
+
+					if dialog_id != 0:
+						grid_key = (grid_x // cell_size, grid_y // cell_size)
+						self.event_grid[grid_key] = dialog_id
+		except Exception:
+			pass
+
+	def _detect_dialog_from_grid(self, polygon: Sequence[Tuple[float, float]]) -> int:
+		"""Detecta diálogo usando grid espacial. Muito mais rápido que varredura pixel-a-pixel."""
+		if not self.event_grid or not polygon:
+			return 0
+
+		try:
+			# Calcula bounding box do polígono
+			xs = [p[0] for p in polygon]
+			ys = [p[1] for p in polygon]
+			min_x = int(math.floor(min(xs)))
+			max_x = int(math.ceil(max(xs)))
+			min_y = int(math.floor(min(ys)))
+			max_y = int(math.ceil(max(ys)))
+
+			cell_size = self.grid_cell_size
+
+			# Converte para coordenadas de grid
+			min_grid_x = min_x // cell_size
+			max_grid_x = max_x // cell_size
+			min_grid_y = min_y // cell_size
+			max_grid_y = max_y // cell_size
+
+			# Verifica células ocupadas pelo polígono
+			for grid_y in range(min_grid_y, max_grid_y + 1):
+				for grid_x in range(min_grid_x, max_grid_x + 1):
+					grid_key = (grid_x, grid_y)
+					if grid_key in self.event_grid:
+						# Encontrou uma célula com evento; valida com pixel-checking
+						dialog_id = self.event_grid[grid_key]
+						# Verifica alguns pontos reais para confirmar
+						cell_min_x = grid_x * cell_size
+						cell_max_x = (grid_x + 1) * cell_size
+						cell_min_y = grid_y * cell_size
+						cell_max_y = (grid_y + 1) * cell_size
+
+						# Amostra pontos estratégicos na célula
+						for py in range(cell_min_y, cell_max_y, max(1, cell_size // 4)):
+							for px in range(cell_min_x, cell_max_x, max(1, cell_size // 4)):
+								if self._point_in_polygon(float(px) + 0.5, float(py) + 0.5, polygon):
+									try:
+										if 0 <= px < self.event_map_image.get_width() and 0 <= py < self.event_map_image.get_height():
+											color = self.event_map_image.get_at((int(px), int(py)))
+											found_id = self._classify_dialog_color(color)
+											if found_id != 0:
+												return found_id
+									except Exception:
+										pass
+
+			return 0
+		except Exception:
+			return 0
+
+
 
 	def _classify_dialog_color(self, color) -> int:
 		try:

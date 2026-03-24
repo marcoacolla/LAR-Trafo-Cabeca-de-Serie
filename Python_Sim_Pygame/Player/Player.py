@@ -74,6 +74,9 @@ class Player:
         # Traction simulation state
         self._last_sim_pos = None
         self._sim_traction = 0
+        
+        # Contador de ticks lógicos (incrementa 60 vezes por segundo)
+        self.logic_tick_count = 0
 
     def getName(self):
         return "player"
@@ -349,8 +352,12 @@ class Player:
         """Pisca uma luz de alerta à frequência `hz` em Hz.
         - mode: 'critico' -> pisca vermelha (`self.lights[0]`)
                 'alerta'  -> pisca amarela (`self.lights[2]`)
-        Chame este método a cada frame (por exemplo no loop de update/draw)
-        para atualizar o estado da luz selecionada.
+        Usa o contador de ticks lógicos (60 ticks/segundo) para sincronia consistente.
+        
+        Lógica: 1Hz = 1 piscada por segundo (60 ticks lógicos).
+        Uma "piscada" é apenas a transição on OU off, não o ciclo completo.
+        Portanto: período de on = 60/hz ticks, período de off = 60/hz ticks,
+        e o ciclo completo = (2 * 60 / hz) ticks.
         """
         try:
             hz = float(hz)
@@ -373,9 +380,15 @@ class Player:
                 pass
             return
 
-        period_ms = 1000.0 / hz
-        ticks = pygame.time.get_ticks()
-        on = ((ticks % period_ms) < (period_ms / 2.0))
+        # Duração de cada "piscada" (on OU off) em ticks
+        # 1Hz = 1 piscada por segundo = 60 ticks para on, 60 ticks para off
+        piscada_ticks = 60.0 / hz
+        # Período completo: on + off = 2 * piscada_ticks
+        full_period_ticks = piscada_ticks * 2.0
+        
+        cycle_position = int(self.logic_tick_count % full_period_ticks)
+        on = cycle_position < piscada_ticks
+        
         try:
             self.lights[target] = bool(on)
         except Exception:
@@ -449,8 +462,13 @@ class Player:
             pass
 
 
-    def move(self, keys, speed=5):
+    def move(self, keys, speed=5, dt_ms=16.67):
         isChangingCourse = False
+        try:
+            dt_scale = max(0.0, min(4.0, float(dt_ms) / 16.67))
+        except Exception:
+            dt_scale = 1.0
+        frame_speed = float(speed) * dt_scale
         # progress any in-progress transition first
         self.update_transition()
         # block inputs during transition or if dead
@@ -464,17 +482,15 @@ class Player:
                     self.angle_offset = -GLV.CURVE_MAX_RADIUS
                 self.setMode("curve",curveStart=self.angle_offset)
             if keys[pygame.K_w]:  # cima
-                self.makeMovement("forward", step=speed)
+                self.makeMovement("forward", step=frame_speed)
             if keys[pygame.K_s]:  # baixo
-                self.makeMovement("backward", step=speed)
+                self.makeMovement("backward", step=frame_speed)
         elif self.curve_mode == "curve" or self.curve_mode == "pivotal":
             nextStep = self.angle_offset
             # --- calcula tempo de tecla pressionada ---
-            now = pygame.time.get_ticks()
-            dt = 16  # valor aproximado entre frames (~60fps)
 
             if keys[pygame.K_a]:
-                self.key_hold_time["A"] += dt
+                self.key_hold_time["A"] += max(0.0, float(dt_ms))
                 self.key_hold_time["D"] = 0
                 isChangingCourse = True
                 hold_factor = min(self.max_hold_boost,
@@ -482,7 +498,7 @@ class Player:
                 nextStep = self.angle_offset - self.step * hold_factor
 
             elif keys[pygame.K_d]:
-                self.key_hold_time["D"] += dt
+                self.key_hold_time["D"] += max(0.0, float(dt_ms))
                 self.key_hold_time["A"] = 0
                 isChangingCourse = True
                 hold_factor = min(self.max_hold_boost,
@@ -494,16 +510,16 @@ class Player:
                 self.key_hold_time["A"] = 0
                 self.key_hold_time["D"] = 0
             if keys[pygame.K_q]:
-                self.icr_bias = min(1.0, self.icr_bias + .1)
+                self.icr_bias = min(1.0, self.icr_bias + (0.1 * dt_scale))
                 isChangingCourse = True
             if keys[pygame.K_e]:
-                self.icr_bias = max(0.0, self.icr_bias - .1)
+                self.icr_bias = max(0.0, self.icr_bias - (0.1 * dt_scale))
                 isChangingCourse = True
             
             if keys[pygame.K_w]:  # cima
-                self.makeMovement("forward", step=speed)
+                self.makeMovement("forward", step=frame_speed)
             if keys[pygame.K_s]:  # baixo
-                self.makeMovement("backward", step=speed)
+                self.makeMovement("backward", step=frame_speed)
 
             if self.curve_mode == "curve":
                 # If the requested angle_offset goes beyond allowed radius,
@@ -545,7 +561,7 @@ class Player:
 
         elif self.curve_mode == "diagonal":
             # In diagonal mode: A/D rotate wheel headings, W/S move along wheel direction
-            WHEEL_TURN_STEP = 5.0  # degrees per tick when holding A/D
+            WHEEL_TURN_STEP = 5.0 * dt_scale  # degrees per tick at 60fps baseline
             steering_active = False
             if keys[pygame.K_a]:
                 steering_active = True
@@ -556,29 +572,29 @@ class Player:
                 for w in self.wheels:
                     w.setHeading((w.getHeading() + WHEEL_TURN_STEP) % 360)
             if (not steering_active) and keys[pygame.K_w]:
-                self.makeMovement("forward", step=speed)
+                self.makeMovement("forward", step=frame_speed)
             if (not steering_active) and keys[pygame.K_s]:
-                self.makeMovement("backward", step=speed)
+                self.makeMovement("backward", step=frame_speed)
 
         elif self.curve_mode == "icamento":
             # In icamento mode: allow normal straight movement while
             # W/S also move the icamento cursor (used by a UI element).
-            CURSOR_STEP = 0.025 * max(1.0, speed / 3.0)
+            CURSOR_STEP = 0.025 * max(1.0, speed / 3.0) * dt_scale
             if keys[pygame.K_w]:
                 # move cursor up
                 self.icamento_cursor = max(0.0, self.icamento_cursor - CURSOR_STEP)
-                self.makeMovement("forward", step=speed)
+                self.makeMovement("forward", step=frame_speed)
             if keys[pygame.K_s]:
                 # move cursor down
                 self.icamento_cursor = min(1.0, self.icamento_cursor + CURSOR_STEP)
-                self.makeMovement("backward", step=speed)
+                self.makeMovement("backward", step=frame_speed)
 
         
         # Atualiza posição de todas as rodas
         for wheel in self.wheels:
             wheel.setPosition((self.x, self.y))
 
-    def move_with_joystick(self, axes, speed=5):
+    def move_with_joystick(self, axes, speed=5, dt_ms=16.67):
         """Control the player using joystick axes.
         axes: (left_x, left_y, right_x, right_y)
         left_y controls forward/back movement (axis centered at 0).
@@ -587,6 +603,11 @@ class Player:
         For icamento mode left_y moves the cursor up/down.
         """
         lx, ly, rx, ry = axes
+        try:
+            dt_scale = max(0.0, min(4.0, float(dt_ms) / 16.67))
+        except Exception:
+            dt_scale = 1.0
+        frame_speed = float(speed) * dt_scale
         # small deadzone to avoid drift
         DEAD = 0.12
         lx_treated, ly_treated = self.normalize_joystick(lx, ly)
@@ -637,9 +658,9 @@ class Player:
                 self.setMode('curve', curveStart=GLV.CURVE_MAX_RADIUS)
             if move_amt > 0:
                 if robot_move_joystick < 0:
-                    self.makeMovement('backward', step=speed * move_amt)
+                    self.makeMovement('backward', step=frame_speed * move_amt)
                 else:
-                    self.makeMovement('forward', step=speed * move_amt)
+                    self.makeMovement('forward', step=frame_speed * move_amt)
             if abs(robot_curve_joystick) > DEAD:
                 # switch to curve mode with angle_offset mapped from left_x
                 try:
@@ -687,45 +708,45 @@ class Player:
                 if move_amt > 0:
                     if robot_curve_joystick_t < 0:
                         if robot_move_joystick_t < 0 :
-                            self.makeMovement('forward', step=speed * move_amt)
+                            self.makeMovement('forward', step=frame_speed * move_amt)
                         else:
-                            self.makeMovement('backward', step=speed * move_amt)
+                            self.makeMovement('backward', step=frame_speed * move_amt)
                     else:
                         if robot_move_joystick_t < 0 :
-                            self.makeMovement('backward', step=speed * move_amt)
+                            self.makeMovement('backward', step=frame_speed * move_amt)
                         else:
-                            self.makeMovement('forward', step=speed * move_amt)
+                            self.makeMovement('forward', step=frame_speed * move_amt)
             else:  # pivotal
                 move_amt = abs(robot_pivotal_spin_joystick_t)
                 if move_amt > DEAD:
                     if robot_pivotal_spin_joystick_t < 0:
-                        self.makeMovement('backward', step=speed * move_amt)
+                        self.makeMovement('backward', step=frame_speed * move_amt)
                     else:
-                        self.makeMovement('forward', step=speed * move_amt)
+                        self.makeMovement('forward', step=frame_speed * move_amt)
 
         elif self.curve_mode == 'diagonal':
             # allow rotation of wheel headings via left_x and movement via left_y
             steering_active = abs(robot_diagonal_control) > DEAD
             if abs(robot_diagonal_control) > DEAD:
-                WHEEL_TURN_STEP = 5.0 * robot_diagonal_control_t
+                WHEEL_TURN_STEP = 5.0 * robot_diagonal_control_t * dt_scale
                 for w in self.wheels:
                     w.setHeading((w.getHeading() + WHEEL_TURN_STEP) % 360)
             if (not steering_active) and move_amt > 0:
                 if ry < 0:
-                    self.makeMovement('backward', step=speed * move_amt)
+                    self.makeMovement('backward', step=frame_speed * move_amt)
                 else:
-                    self.makeMovement('forward', step=speed * move_amt)
+                    self.makeMovement('forward', step=frame_speed * move_amt)
 
         elif self.curve_mode == 'icamento':
             # left_y moves the cursor; also moves vehicle
-            CURSOR_SENS = 0.035
+            CURSOR_SENS = 0.035 * dt_scale
             if abs(robot_icamento_control) > DEAD:
                 # negative ly -> move up (decrease cursor)
                 self.icamento_cursor = max(0.0, min(1.0, self.icamento_cursor + (-robot_icamento_control_t) * CURSOR_SENS))
                 if robot_icamento_control < 0:
-                    self.makeMovement('forward', step=speed * move_amt)
+                    self.makeMovement('forward', step=frame_speed * move_amt)
                 else:
-                    self.makeMovement('backward', step=speed * move_amt)
+                    self.makeMovement('backward', step=frame_speed * move_amt)
 
         # sync wheel positions
         for wheel in self.wheels:

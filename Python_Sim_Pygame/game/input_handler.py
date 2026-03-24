@@ -138,7 +138,7 @@ class InputHandler:
         return zoom_changed
     
     def process_movement(self, current_keys, player, joystick_controller, 
-                        joystick_leading, move_speed, pause_menu_open=False):
+                        joystick_leading, move_speed, pause_menu_open=False, dt_ms=16.67):
         """
         Process player movement from keyboard or joystick.
         Returns the control mode used ('keyboard' or 'joystick').
@@ -151,18 +151,18 @@ class InputHandler:
                 # direct CAN joystick control
                 if getattr(joystick_controller, 'available', False):
                     lx, ly, rx, ry = joystick_controller.getJoystickValues()
-                    player.move_with_joystick((lx, ly, rx, ry), speed=move_speed)
+                    player.move_with_joystick((lx, ly, rx, ry), speed=move_speed, dt_ms=dt_ms)
                     self.control_mode = CONTROL_MODE_JOYSTICK
                 else:
                     # no CAN joystick available: fallback to keyboard
                     self.control_mode = CONTROL_MODE_KEYBOARD
-                    player.move(current_keys, speed=move_speed)
+                    player.move(current_keys, speed=move_speed, dt_ms=dt_ms)
             else:
                 # keyboard mode
                 self.control_mode = CONTROL_MODE_KEYBOARD
-                player.move(current_keys, speed=move_speed)
+                player.move(current_keys, speed=move_speed, dt_ms=dt_ms)
         except Exception:
-            player.move(current_keys, speed=move_speed)
+            player.move(current_keys, speed=move_speed, dt_ms=dt_ms)
             self.control_mode = CONTROL_MODE_KEYBOARD
         
         return self.control_mode

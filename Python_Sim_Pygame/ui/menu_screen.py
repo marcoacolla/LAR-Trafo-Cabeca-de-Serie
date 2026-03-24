@@ -13,7 +13,10 @@ def run_start_menu(screen, initial_config=None, from_pause=False):
 	font = pygame.font.SysFont(None, 48)
 	small = pygame.font.SysFont(None, 28)
 
-	options = ['Começar', 'Opções', 'Sair']
+	if from_pause:
+		options = ['Continuar', 'Selecionar Mapa', 'Opções', 'Sair']
+	else:
+		options = ['Começar', 'Opções', 'Sair']
 	selected = 0
 	while True:
 		dt = clock.tick(60)
@@ -26,15 +29,27 @@ def run_start_menu(screen, initial_config=None, from_pause=False):
 				elif ev.key == pygame.K_DOWN:
 					selected = (selected + 1) % len(options)
 				elif ev.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-					if selected == 0:
-							return cfg, 'resume' if from_pause else 'map_select'
-					elif selected == 1:
-						# open options menu
-						new_cfg = run_options_menu(screen, cfg)
-						if new_cfg:
-							cfg.update(new_cfg)
-					elif selected == 2:
-						return cfg, 'exit'
+					if from_pause:
+						if selected == 0:
+							return cfg, 'resume'
+						elif selected == 1:
+							return cfg, 'map_select'
+						elif selected == 2:
+							new_cfg = run_options_menu(screen, cfg)
+							if new_cfg:
+								cfg.update(new_cfg)
+						elif selected == 3:
+							return cfg, 'exit'
+					else:
+						if selected == 0:
+							return cfg, 'map_select'
+						elif selected == 1:
+							# open options menu
+							new_cfg = run_options_menu(screen, cfg)
+							if new_cfg:
+								cfg.update(new_cfg)
+						elif selected == 2:
+							return cfg, 'exit'
 			if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
 				mx, my = ev.pos
 				sw, sh = screen.get_size()
@@ -47,14 +62,26 @@ def run_start_menu(screen, initial_config=None, from_pause=False):
 					by = base_y + i * (btn_h + 16)
 					r = pygame.Rect(bx, by, btn_w, btn_h)
 					if r.collidepoint((mx, my)):
-						if i == 0:
-									return cfg, 'resume' if from_pause else 'map_select'
-						elif i == 1:
-							new_cfg = run_options_menu(screen, cfg)
-							if new_cfg:
-								cfg.update(new_cfg)
-						elif i == 2:
-							return cfg, 'exit'
+						if from_pause:
+							if i == 0:
+								return cfg, 'resume'
+							elif i == 1:
+								return cfg, 'map_select'
+							elif i == 2:
+								new_cfg = run_options_menu(screen, cfg)
+								if new_cfg:
+									cfg.update(new_cfg)
+							elif i == 3:
+								return cfg, 'exit'
+						else:
+							if i == 0:
+								return cfg, 'map_select'
+							elif i == 1:
+								new_cfg = run_options_menu(screen, cfg)
+								if new_cfg:
+									cfg.update(new_cfg)
+							elif i == 2:
+								return cfg, 'exit'
 
 		# draw
 		screen.fill((16, 18, 22))
@@ -79,7 +106,7 @@ def run_start_menu(screen, initial_config=None, from_pause=False):
 			screen.blit(txt, (bx + (btn_w - txt.get_width())//2, by + (btn_h - txt.get_height())//2))
 
 		# hint of current options
-		hint = small.render(f"Hardcore: {'ON' if cfg.get('hardcore') else 'OFF'}  |  Fullscreen: {'ON' if cfg.get('fullscreen') else 'OFF'}", True, (180,180,180))
+		hint = small.render(f"Hardcore: {'ON' if cfg.get('hardcore') else 'OFF'}  |  Joystick Leading: {'ON' if cfg.get('joystick_leading', True) else 'OFF'}", True, (180,180,180))
 		screen.blit(hint, ((sw - hint.get_width())//2, base_y + len(options)*(btn_h+16) + 8))
 
 		pygame.display.flip()
