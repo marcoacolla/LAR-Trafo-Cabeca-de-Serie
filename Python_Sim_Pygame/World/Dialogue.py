@@ -253,7 +253,6 @@ class DialogueManager:
 					grid_key = (grid_x, grid_y)
 					if grid_key in self.event_grid:
 						# Encontrou uma célula com evento; valida com pixel-checking
-						dialog_id = self.event_grid[grid_key]
 						# Verifica alguns pontos reais para confirmar
 						cell_min_x = grid_x * cell_size
 						cell_max_x = (grid_x + 1) * cell_size
@@ -340,4 +339,13 @@ class DialogueManager:
 					continue
 
 		return 0
+
+	def get_available_dialog_ids(self) -> Sequence[int]:
+		"""Return sorted dialog IDs actually present in this phase EventMap."""
+		try:
+			if not self.event_grid:
+				return []
+			return sorted({int(dialog_id) for dialog_id in self.event_grid.values() if int(dialog_id) > 0})
+		except Exception:
+			return []
 

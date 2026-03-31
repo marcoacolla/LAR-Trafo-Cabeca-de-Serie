@@ -96,8 +96,6 @@ class InputHandler:
             if pause_menu.is_open:
                 pause_menu.close()
                 return True
-            else:
-                return 'exit_game'
         
         return False
     

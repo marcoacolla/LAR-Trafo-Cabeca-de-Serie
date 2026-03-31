@@ -18,6 +18,12 @@ import math
 import os
 import sys
 
+from game.tutorial_progress import (
+    get_next_tutorial_map,
+    is_tutorial_map,
+    mark_tutorial_level_completed,
+)
+
 # Import configuration
 from game.config import (
     SCREEN_W, SCREEN_H, PANEL_WIDTH, BOTTOM_BAR_HEIGHT,
@@ -50,9 +56,14 @@ from ui.control_screen import run_control_screen
 from ui.pausemenu import create_pause_menu
 
 try:
-    from ui.screens.map_select_screen import run_map_select_menu
+    from ui.screens.map_select_screen import run_map_select_menu, run_tutorial_select_menu
 except Exception:
     run_map_select_menu = None
+    run_tutorial_select_menu = None
+
+
+PROJECT_ROOT = os.path.dirname(__file__)
+TUTORIAL_COMPLETED_BANNER_MS = 2600
 
 
 def toggle_fullscreen():
@@ -79,7 +90,7 @@ def show_start_menu():
     selected_map_path = None
     
     # Loop until a map is chosen or user exits
-    while _action == 'map_select' or _action == 'control':
+    while _action == 'map_select' or _action == 'control' or _action == 'tutorial':
         if _action == 'control':
             # Show control screen
             _control_action = run_control_screen(screen)
@@ -98,6 +109,16 @@ def show_start_menu():
                 selected_map_path = sel
                 break
             
+            _cfg_res, _action = run_start_menu(screen, _cfg_res)
+        elif _action == 'tutorial':
+            if run_tutorial_select_menu is not None:
+                sel = run_tutorial_select_menu(screen, PROJECT_ROOT)
+            else:
+                sel = get_next_tutorial_map(PROJECT_ROOT)
+            if sel:
+                selected_map_path = sel
+                break
+
             _cfg_res, _action = run_start_menu(screen, _cfg_res)
     
     if _action == 'exit':
@@ -161,6 +182,29 @@ def toggle_joystick_leading():
             control_mode = CONTROL_MODE_KEYBOARD
     except Exception:
         pass
+
+
+def init_tutorial_state(map_path, dialogue_mgr):
+    """Initialize tutorial progression tracking for the current map."""
+    global is_current_map_tutorial, tutorial_available_event_ids
+    global tutorial_visited_event_ids, tutorial_phase_completed
+    global tutorial_completion_show_until
+
+    is_current_map_tutorial = is_tutorial_map(PROJECT_ROOT, map_path)
+
+    tutorial_available_event_ids = set()
+    tutorial_visited_event_ids = set()
+    tutorial_phase_completed = False
+    tutorial_completion_show_until = 0
+
+    if not is_current_map_tutorial:
+        return
+
+    try:
+        available_ids = dialogue_mgr.get_available_dialog_ids()
+        tutorial_available_event_ids = {int(v) for v in available_ids if int(v) > 0}
+    except Exception:
+        tutorial_available_event_ids = set()
 
 
 def setup_ui_screens():
@@ -355,6 +399,12 @@ hardcore_mode = DEFAULT_HARDCORE_MODE
 control_mode = CONTROL_MODE_JOYSTICK if (joystick_leading and joystick_available) else CONTROL_MODE_KEYBOARD
 last_printed_control_mode = control_mode
 
+is_current_map_tutorial = False
+tutorial_available_event_ids = set()
+tutorial_visited_event_ids = set()
+tutorial_phase_completed = False
+tutorial_completion_show_until = 0
+
 can_movement_value = CAN_MOVEMENT_NEUTRAL
 current_accelerometer_value = 0
 trafo_pickup_time = 0
@@ -367,6 +417,7 @@ lever_state = {
 
 # Setup UI screens
 setup_ui_screens()
+init_tutorial_state(selected_map_path, dialogue_manager)
 
 # Helper functions for PauseMenu callbacks
 def _get_global_var(key):
@@ -429,6 +480,17 @@ while running:
             pygame.joystick.init()
         except Exception:
             pass
+
+    # Window close (X button)
+    try:
+        for _ in pygame.event.get([pygame.QUIT]):
+            running = False
+            break
+    except Exception:
+        pass
+
+    if not running:
+        break
     
     # Mouse events
     try:
@@ -572,8 +634,19 @@ while running:
 
         # Process dialogue manager
         try:
+            current_dialog_id = 0
             if dialogue_manager.enabled and hasattr(player, 'get_body_polygon'):
-                dialogue_manager.process_player_polygon(player.get_body_polygon(), auto_print=False)
+                current_dialog_id = dialogue_manager.process_player_polygon(player.get_body_polygon(), auto_print=False)
+
+            if is_current_map_tutorial and (not tutorial_phase_completed):
+                if current_dialog_id in tutorial_available_event_ids:
+                    tutorial_visited_event_ids.add(current_dialog_id)
+
+                # A tutorial phase completes after all event blocks in EventMap are visited.
+                if tutorial_available_event_ids and tutorial_available_event_ids.issubset(tutorial_visited_event_ids):
+                    tutorial_phase_completed = True
+                    mark_tutorial_level_completed(PROJECT_ROOT, selected_map_path)
+                    tutorial_completion_show_until = pygame.time.get_ticks() + TUTORIAL_COMPLETED_BANNER_MS
         except Exception:
             pass
 
@@ -752,45 +825,82 @@ while running:
                 hardcore_mode = bool(_cfg_res.get('hardcore', hardcore_mode))
                 joystick_leading = bool(_cfg_res.get('joystick_leading', joystick_leading))
                 desired_fullscreen = bool(_cfg_res.get('fullscreen', is_fullscreen))
-                if _action == 'map_select':
-                    _selected = None
-                    if run_map_select_menu is not None:
-                        try:
-                            _selected = run_map_select_menu(screen)
-                        except Exception:
-                            _selected = None
 
-                    if _selected:
-                        selected_map_path = _selected
-                        game_state = setup_game_objects(screen=None, selected_map_path=selected_map_path)
+                _selected_map = None
+                while _action in ('control', 'map_select', 'tutorial'):
+                    if _action == 'control':
+                        _control_action = run_control_screen(screen)
+                        if _control_action == 'exit':
+                            pygame.quit()
+                            sys.exit(0)
+                        _cfg_res, _action = run_start_menu(screen, _cfg_res, from_pause=True)
+                        continue
 
-                        screen = game_state['screen']
-                        map_image = game_state['map_image']
-                        collision_grid = game_state['collision_grid']
-                        dialogue_manager = game_state['dialogue_manager']
-                        player = game_state['player']
-                        camera = game_state['camera']
-                        trafo = game_state['trafo']
-                        ui = game_state['ui']
-                        joystick_controller = game_state['joystick_controller']
-                        joystick_available = game_state['joystick_available']
-                        spawn_point = game_state['spawn_point']
+                    if _action == 'map_select':
+                        _selected = None
+                        if run_map_select_menu is not None:
+                            try:
+                                _selected = run_map_select_menu(screen)
+                            except Exception:
+                                _selected = None
 
-                        setup_ui_screens()
+                        if _selected:
+                            _selected_map = _selected
+                            break
 
-                        try:
-                            _windowed_size = screen.get_size()
-                        except Exception:
-                            _windowed_size = (SCREEN_W, SCREEN_H)
-                        is_fullscreen = False
+                        # Esc/cancel in map selector returns to start menu instead of gameplay.
+                        _cfg_res, _action = run_start_menu(screen, _cfg_res, from_pause=True)
+                        continue
 
-                        control_mode = CONTROL_MODE_JOYSTICK if (joystick_leading and joystick_available) else CONTROL_MODE_KEYBOARD
-                        last_printed_control_mode = control_mode
+                    if _action == 'tutorial':
+                        _selected = None
+                        if run_tutorial_select_menu is not None:
+                            try:
+                                _selected = run_tutorial_select_menu(screen, PROJECT_ROOT)
+                            except Exception:
+                                _selected = None
+                        else:
+                            _selected = get_next_tutorial_map(PROJECT_ROOT)
 
-                        can_movement_value = CAN_MOVEMENT_NEUTRAL
-                        current_accelerometer_value = 0
-                        trafo_pickup_time = 0
-                        trafo_death_expire = 0
+                        if _selected:
+                            _selected_map = _selected
+                            break
+
+                        # Esc/cancel in tutorial selector returns to start menu instead of gameplay.
+                        _cfg_res, _action = run_start_menu(screen, _cfg_res, from_pause=True)
+
+                if _selected_map:
+                    selected_map_path = _selected_map
+                    game_state = setup_game_objects(screen=None, selected_map_path=selected_map_path)
+
+                    screen = game_state['screen']
+                    map_image = game_state['map_image']
+                    collision_grid = game_state['collision_grid']
+                    dialogue_manager = game_state['dialogue_manager']
+                    player = game_state['player']
+                    camera = game_state['camera']
+                    trafo = game_state['trafo']
+                    ui = game_state['ui']
+                    joystick_controller = game_state['joystick_controller']
+                    joystick_available = game_state['joystick_available']
+                    spawn_point = game_state['spawn_point']
+
+                    setup_ui_screens()
+
+                    try:
+                        _windowed_size = screen.get_size()
+                    except Exception:
+                        _windowed_size = (SCREEN_W, SCREEN_H)
+                    is_fullscreen = False
+
+                    control_mode = CONTROL_MODE_JOYSTICK if (joystick_leading and joystick_available) else CONTROL_MODE_KEYBOARD
+                    last_printed_control_mode = control_mode
+
+                    can_movement_value = CAN_MOVEMENT_NEUTRAL
+                    current_accelerometer_value = 0
+                    trafo_pickup_time = 0
+                    trafo_death_expire = 0
+                    init_tutorial_state(selected_map_path, dialogue_manager)
 
                 if desired_fullscreen != bool(is_fullscreen):
                     toggle_fullscreen()
@@ -929,6 +1039,45 @@ while running:
     # Draw pause menu
     try:
         pause_menu.draw(screen)
+    except Exception:
+        pass
+
+    # Draw tutorial completion feedback
+    try:
+        if tutorial_completion_show_until > pygame.time.get_ticks():
+            viewport_w = max(1, screen.get_width() - PANEL_WIDTH)
+            viewport_h = max(1, screen.get_height() - BOTTOM_BAR_HEIGHT)
+            viewport_rect = pygame.Rect(0, 0, viewport_w, viewport_h)
+
+            title_font = pygame.font.SysFont(None, 86)
+            sub_font = pygame.font.SysFont(None, 34)
+
+            title = title_font.render('FASE CONCLUIDA', True, (236, 255, 244))
+            subtitle = sub_font.render('Proxima fase desbloqueada', True, (198, 232, 255))
+
+            content_w = max(title.get_width(), subtitle.get_width())
+            content_h = title.get_height() + 12 + subtitle.get_height()
+            box_w = content_w + 56
+            box_h = content_h + 32
+            box_x = viewport_rect.x + (viewport_rect.width - box_w) // 2
+            box_y = viewport_rect.y + (viewport_rect.height - box_h) // 2
+
+            box_surface = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
+            box_surface.fill((8, 28, 52, 205))
+            screen.blit(box_surface, (box_x, box_y))
+
+            pygame.draw.rect(screen, (76, 188, 255), pygame.Rect(box_x, box_y, box_w, box_h), 2)
+            pygame.draw.rect(screen, (44, 180, 92), pygame.Rect(box_x + 6, box_y + 6, box_w - 12, box_h - 12), 2)
+
+            title_x = box_x + (box_w - title.get_width()) // 2
+            title_y = box_y + 10
+            subtitle_x = box_x + (box_w - subtitle.get_width()) // 2
+            subtitle_y = title_y + title.get_height() + 12
+
+            shadow = title_font.render('FASE CONCLUIDA', True, (10, 18, 30))
+            screen.blit(shadow, (title_x + 2, title_y + 2))
+            screen.blit(title, (title_x, title_y))
+            screen.blit(subtitle, (subtitle_x, subtitle_y))
     except Exception:
         pass
 
