@@ -1,0 +1,27 @@
+{
+  "map_name": "Apartamento com Escada",
+  "player_spawn": [
+    1477.5,
+    889.0
+  ],
+  "trafo_spawn": [
+    97.5,
+    556.5
+  ],
+  "metadata": {
+    "auto_generated": true
+  },
+  "phase_config": {
+    "spawn_trafo": true,
+    "force_hardcore_mode": false,
+    "is_tutorial": false,
+    "available_robot_modes": [
+      "straight",
+      "curve",
+      "pivotal",
+      "diagonal",
+      "icamento"
+    ],
+    "difficulty": "medium"
+  }
+}
