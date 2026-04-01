@@ -1,0 +1,14 @@
+{
+  "map_name": "mapa_apartamento_escada",
+  "player_spawn": [
+    100,
+    100
+  ],
+  "trafo_spawn": [
+    200,
+    100
+  ],
+  "metadata": {
+    "auto_generated": true
+  }
+}

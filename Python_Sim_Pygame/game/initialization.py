@@ -14,6 +14,7 @@ from .collision import find_green_center, find_blue_center, build_collision_grid
 from World.World import World as world
 from World.Dialogue import DialogueManager
 from World.Trafo import Trafo
+from World.EventMapManager import EventMapManager
 from Player.Player import Player
 from Camera.Camera import Camera
 from Player.Joystick import Joystick as JoystickController
@@ -75,28 +76,13 @@ def init_player_and_camera(screen, spawn_point):
     return player, camera
 
 
-def init_trafo(map_image, spawn_point):
-    """Initialize the trafo at blue marker or fallback position."""
-    blue_found = find_blue_center(map_image)
+def init_trafo(event_map, spawn_point):
+    """Initialize the trafo at position defined by EventMap."""
+    trafo_spawn = event_map.get_trafo_spawn()
     
-    if blue_found:
-        bx, by = blue_found
-        trafo = Trafo(bx, by, size=TRAFO_SIZE, image_path='trafo_image/trafo.png')
-        trafo.initial_pos = (bx, by)
-    else:
-        try:
-            trafo = Trafo(spawn_point[0] + 120, spawn_point[1], 
-                         size=TRAFO_SIZE, image_path='trafo_image/trafo.png')
-            trafo.initial_pos = (spawn_point[0] + 120, spawn_point[1])
-        except Exception:
-            trafo = Trafo(spawn_point[0] + 120 if isinstance(spawn_point, tuple) else 300,
-                         spawn_point[1] if isinstance(spawn_point, tuple) else 200,
-                         size=TRAFO_SIZE, image_path='trafo_image/trafo.png')
-            try:
-                trafo.initial_pos = (spawn_point[0] + 120 if isinstance(spawn_point, tuple) else 300,
-                                    spawn_point[1] if isinstance(spawn_point, tuple) else 200)
-            except Exception:
-                trafo.initial_pos = (300, 200)
+    trafo = Trafo(trafo_spawn[0], trafo_spawn[1], 
+                 size=TRAFO_SIZE, image_path='trafo_image/trafo.png')
+    trafo.initial_pos = trafo_spawn
     
     return trafo
 
@@ -127,6 +113,7 @@ def setup_game_objects(screen, selected_map_path=None):
     """
     Complete game initialization routine.
     Returns a dictionary with all initialized game objects and state.
+    EventMapManager é agora responsável pela lógica do mapa (spawn points, colisões, etc.).
     """
     # Initialize pygame
     screen = init_pygame()
@@ -134,12 +121,14 @@ def setup_game_objects(screen, selected_map_path=None):
     # Load map
     map_path, map_image = load_map(selected_map_path)
     
-    # Build collision grid
+    # Load EventMap - responsável pela lógica do mapa
+    event_map = EventMapManager(map_path)
+    
+    # Build collision grid from map visualization
     collision_grid, occupied_pixels = build_collision_grid(map_image)
     
-    # Determine spawn point
-    found = find_green_center(map_image)
-    spawn_point = found if found else DEFAULT_SPAWN_POINT
+    # Get spawn point from EventMap (now the source of truth)
+    spawn_point = event_map.get_player_spawn()
     
     # Initialize dialogue manager
     dialogue_manager = init_dialogue_manager(
@@ -158,8 +147,8 @@ def setup_game_objects(screen, selected_map_path=None):
     except Exception:
         pass
     
-    # Initialize trafo
-    trafo = init_trafo(map_image, spawn_point)
+    # Initialize trafo from EventMap
+    trafo = init_trafo(event_map, spawn_point)
     
     # Initialize UI (import here to avoid circular imports)
     try:
@@ -197,6 +186,7 @@ def setup_game_objects(screen, selected_map_path=None):
         'screen': screen,
         'map_image': map_image,
         'map_path': map_path,
+        'event_map': event_map,
         'collision_grid': collision_grid,
         'dialogue_manager': dialogue_manager,
         'player': player,

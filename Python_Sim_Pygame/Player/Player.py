@@ -36,6 +36,9 @@ class Player:
         self.heading = 0
         self.camera = camera
         self.modes = ["straight", "curve", "pivotal", "diagonal"]
+        # Modos de operação DISPONÍVEIS nesta fase (pode ser restringido por EventMap)
+        # Default: todos os modos. Será sobrescrito por v1.0_pygame.py
+        self.available_modes = ["straight", "curve", "pivotal", "diagonal"]
         self.lights = [False, False, False, False, False]  # Estado das luzes (4 luzes)
         self.sirene = False  # Estado da sirene (ligada/desligada)
         
@@ -774,6 +777,13 @@ class Player:
         # Start a mode-change transition that lasts `transition_duration_ms`.
         # While transitioning: inputs are ignored and wheel headings interpolate
         # from their current values back to default for the new mode.
+        
+        # ===== VALIDAÇÃO: Verificar se modo é permitido =====
+        if mode not in self.available_modes:
+            print(f"[Player] Modo '{mode}' não disponível. Modos: {self.available_modes}")
+            return  # Bloquear mudança
+        # ===== FIM VALIDAÇÃO =====
+        
         if self.is_transitioning:
             return  # avoid overlapping transitions
 

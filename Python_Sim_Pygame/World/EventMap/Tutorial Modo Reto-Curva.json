@@ -1,0 +1,27 @@
+{
+  "map_name": "Tutorial Modo Reto-Curva",
+  "player_spawn": [
+    280.5,
+    777.0
+  ],
+  "trafo_spawn": [
+    430.5,
+    777.0
+  ],
+  "metadata": {
+    "description": "Tutorial para aprender modos reto e curva do robô",
+    "difficulty": "easy",
+    "tutorial": true
+  },
+  "phase_config": {
+    "is_tutorial": true,
+    "spawn_trafo": false,
+    "force_hardcore_mode": true,
+    "available_robot_modes": [
+      "straight",
+      "curve"
+    ],
+    "difficulty": "easy",
+    "description": "Tutorial focado apenas em modos reto e curva. Modo hardcore forçado para aprendizado estruturado."
+  }
+}

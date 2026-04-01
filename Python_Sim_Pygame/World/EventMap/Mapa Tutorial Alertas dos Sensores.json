@@ -1,0 +1,27 @@
+{
+  "map_name": "Mapa Tutorial Alertas dos Sensores",
+  "player_spawn": [
+    959.5,
+    959.0
+  ],
+  "trafo_spawn": [
+    978.5,
+    458.5
+  ],
+  "metadata": {
+    "description": "Tutorial para aprender sobre os diferentes alertas dos sensores do robô",
+    "difficulty": "easy",
+    "tutorial": true
+  },
+  "phase_config": {
+    "is_tutorial": true,
+    "spawn_trafo": false,
+    "force_hardcore_mode": false,
+    "available_robot_modes": [
+      "straight",
+      "curve"
+    ],
+    "difficulty": "easy",
+    "description": "Tutorial focado nos sensores. Sem trafo para focar no aprendizado. Apenas modos reto e curva."
+  }
+}

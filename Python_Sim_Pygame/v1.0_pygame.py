@@ -389,13 +389,31 @@ ui = game_state['ui']
 joystick_controller = game_state['joystick_controller']
 joystick_available = game_state['joystick_available']
 spawn_point = game_state['spawn_point']
+event_map = game_state['event_map']
+
+# ===== APPLY EventMap PHASE CONFIGURATIONS =====
+# Remover trafo se a configuração do mapa diz para não spawnar
+if not event_map.has_trafo_spawn():
+    trafo = None
+    print("[Game] Trafo desativado para este mapa (phase_config: spawn_trafo=False)")
+
+# Forçar modo hardcore se necessário
+if event_map.is_hardcore_mode_forced():
+    hardcore_mode = True
+    print("[Game] Modo Hardcore FORÇADO neste mapa (phase_config: force_hardcore_mode=True)")
+
+# Obter modos de operação disponíveis, restringir ao player
+available_robot_modes = event_map.get_available_robot_modes()
+player.available_modes = available_robot_modes  # ← Repassar restrição ao player
+print(f"[Game] Modos de operação disponíveis neste mapa: {available_robot_modes}")
+# ===== END EventMap CONFIGURATION =====
 
 # Initialize game state variables
 is_fullscreen = False
 _windowed_size = (SCREEN_W, SCREEN_H)
 start_menu_desired_fullscreen = False
 joystick_leading = DEFAULT_JOYSTICK_LEADING
-hardcore_mode = DEFAULT_HARDCORE_MODE
+hardcore_mode = hardcore_mode  # Se foi forçado acima, mantém True
 control_mode = CONTROL_MODE_JOYSTICK if (joystick_leading and joystick_available) else CONTROL_MODE_KEYBOARD
 last_printed_control_mode = control_mode
 
@@ -560,11 +578,14 @@ while running:
                         8: 'icamento'
                     }
                     new_mode = mode_map.get(sel)
-                    if new_mode:
+                    if new_mode and new_mode in available_robot_modes:
                         try:
                             player.setMode(new_mode)
                         except Exception:
                             pass
+                    elif new_mode:
+                        # Modo não está disponível neste mapa
+                        print(f"[Game] Modo '{new_mode}' não disponível. Modos: {available_robot_modes}")
                 finally:
                     joystick_controller.hasChangedMode = False
         except Exception:
@@ -884,6 +905,20 @@ while running:
                     joystick_controller = game_state['joystick_controller']
                     joystick_available = game_state['joystick_available']
                     spawn_point = game_state['spawn_point']
+                    event_map = game_state['event_map']
+
+                    # Apply EventMap phase configurations
+                    if not event_map.has_trafo_spawn():
+                        trafo = None
+                        print("[Game] Trafo desativado para este mapa")
+                    
+                    if event_map.is_hardcore_mode_forced():
+                        hardcore_mode = True
+                        print("[Game] Modo Hardcore FORÇADO neste mapa")
+                    
+                    available_robot_modes = event_map.get_available_robot_modes()
+                    player.available_modes = available_robot_modes  # ← Repassar restrição ao player
+                    print(f"[Game] Modos de operação disponíveis: {available_robot_modes}")
 
                     setup_ui_screens()
 

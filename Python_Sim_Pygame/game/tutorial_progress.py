@@ -12,6 +12,7 @@ from typing import Dict, List, Set
 
 # Change progression order here.
 TUTORIAL_PHASE_ORDER: List[str] = [
+    "Tutorial Modo Reto-Curva.png",
     "Mapa Tutorial Alertas de Inclinação.png",
     "Mapa Tutorial Alertas dos Sensores.png",
 ]

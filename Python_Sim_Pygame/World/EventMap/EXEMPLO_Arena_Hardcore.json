@@ -1,0 +1,16 @@
+{
+  "map_name": "Exemplo: Arena Hardcore",
+  "player_spawn": [100, 150],
+  "trafo_spawn": [600, 150],
+  "metadata": {
+    "example": "Este é um exemplo de mapa com fase_config customizada"
+  },
+  "phase_config": {
+    "is_tutorial": false,
+    "spawn_trafo": true,
+    "force_hardcore_mode": true,
+    "available_robot_modes": ["pivotal", "diagonal"],
+    "difficulty": "hard",
+    "description": "Desafio extremo: modo hardcore obrigatório, apenas modos pivotante e diagonal"
+  }
+}
