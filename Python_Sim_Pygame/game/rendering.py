@@ -176,21 +176,35 @@ def draw_collision_overlay(screen, PANEL_WIDTH, BOTTOM_BAR_HEIGHT):
     """Draw the collision warning overlay."""
     try:
         fonte = pygame.font.SysFont(None, 48)
-        texto = fonte.render('Colisão Detectada! Mova para sair.', True, (255, 0, 0))
-        
-        # Semi-transparent background
-        bg_w = texto.get_width() + 40
-        bg_h = texto.get_height() + 24
-        bg_surf = pygame.Surface((bg_w, bg_h), pygame.SRCALPHA)
-        bg_surf.fill((0, 0, 0, 150))
-        
+
         world_w = max(1, int(screen.get_width() - PANEL_WIDTH))
         world_h = max(1, int(screen.get_height() - BOTTOM_BAR_HEIGHT))
-        sx = (world_w // 2) - (bg_w // 2)
-        sy = (world_h // 2) - (bg_h // 2)
-        
+        viewport_rect = pygame.Rect(0, 0, world_w, world_h)
+
+        # Keeps the warning legible when the available viewport gets narrow.
+        line_texts = ['Colisão Detectada!', 'Mova para sair.']
+        rendered_lines = [fonte.render(line, True, (255, 0, 0)) for line in line_texts]
+
+        line_gap = 8
+        max_line_w = max(line.get_width() for line in rendered_lines)
+        text_h = sum(line.get_height() for line in rendered_lines) + line_gap
+
+        # Semi-transparent background
+        bg_w = max_line_w + 40
+        bg_h = text_h + 24
+        bg_surf = pygame.Surface((bg_w, bg_h), pygame.SRCALPHA)
+        bg_surf.fill((0, 0, 0, 150))
+
+        sx = viewport_rect.x + (viewport_rect.width - bg_w) // 2
+        sy = viewport_rect.y + (viewport_rect.height - bg_h) // 2
+
         screen.blit(bg_surf, (sx, sy))
-        screen.blit(texto, (sx + 20, sy + 12))
+
+        y = sy + 12
+        for line in rendered_lines:
+            lx = sx + (bg_w - line.get_width()) // 2
+            screen.blit(line, (lx, y))
+            y += line.get_height() + line_gap
     except Exception:
         pass
 
