@@ -25,5 +25,11 @@
     ],
     "difficulty": "easy",
     "description": "Tutorial com foco em alertas de inclinação. Todos os modos de operação do robô disponíveis."
+  },
+  "completion_zone": {
+    "x": 922,
+    "y": 424,
+    "width": 76,
+    "height": 156
   }
 }

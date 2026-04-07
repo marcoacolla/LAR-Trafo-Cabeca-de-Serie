@@ -10,7 +10,8 @@ def run_start_menu(screen, initial_config=None, from_pause=False):
 		cfg.update(initial_config)
 
 	clock = pygame.time.Clock()
-	font = pygame.font.SysFont(None, 48)
+	font = pygame.font.SysFont(None, 64)
+	title_sub = pygame.font.SysFont(None, 30)
 	small = pygame.font.SysFont(None, 28)
 
 	base_options = ['Começar', 'Tutorial', 'Controle', 'Opções', 'Sair']
@@ -46,6 +47,14 @@ def run_start_menu(screen, initial_config=None, from_pause=False):
 			return None
 		return action
 
+	def get_layout(sw, sh):
+		btn_w = 400
+		btn_h = 64
+		center_x = sw // 2
+		# Push buttons a bit down to give room for title/subtitle.
+		base_y = sh // 2 - (len(options)//2) * (btn_h + 16) + 52
+		return btn_w, btn_h, center_x, base_y
+
 	while True:
 		clock.tick(60)
 		for ev in pygame.event.get():
@@ -66,10 +75,7 @@ def run_start_menu(screen, initial_config=None, from_pause=False):
 			if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
 				mx, my = ev.pos
 				sw, sh = screen.get_size()
-				btn_w = 400
-				btn_h = 64
-				center_x = sw // 2
-				base_y = sh // 2 - (len(options)//2) * (btn_h + 16)
+				btn_w, btn_h, center_x, base_y = get_layout(sw, sh)
 				for i, _ in enumerate(options):
 					bx = center_x - btn_w//2
 					by = base_y + i * (btn_h + 16)
@@ -81,14 +87,20 @@ def run_start_menu(screen, initial_config=None, from_pause=False):
 
 		# draw
 		screen.fill((16, 18, 22))
-		title = font.render('Trafo Simulator', True, (220, 220, 255))
 		sw, sh = screen.get_size()
-		screen.blit(title, ((sw - title.get_width())//2, sh//4))
+		title = font.render('TRAFO SIMULATOR', True, (235, 241, 255))
+		title_shadow = font.render('TRAFO SIMULATOR', True, (12, 15, 28))
+		subtitle = title_sub.render('Cabeca de Serie', True, (143, 185, 255))
+		title_y = max(34, sh // 8)
+		title_x = (sw - title.get_width()) // 2
+		screen.blit(title_shadow, (title_x + 3, title_y + 3))
+		screen.blit(title, (title_x, title_y))
+		sub_x = (sw - subtitle.get_width()) // 2
+		sub_y = title_y + title.get_height() - 6
+		screen.blit(subtitle, (sub_x, sub_y))
+		pygame.draw.line(screen, (61, 97, 170), (sw // 2 - 215, sub_y + subtitle.get_height() + 8), (sw // 2 + 215, sub_y + subtitle.get_height() + 8), 2)
 
-		btn_w = 400
-		btn_h = 64
-		center_x = sw // 2
-		base_y = sh // 2 - (len(options)//2) * (btn_h + 16)
+		btn_w, btn_h, center_x, base_y = get_layout(sw, sh)
 		for i, label in enumerate(options):
 			bx = center_x - btn_w//2
 			by = base_y + i * (btn_h + 16)

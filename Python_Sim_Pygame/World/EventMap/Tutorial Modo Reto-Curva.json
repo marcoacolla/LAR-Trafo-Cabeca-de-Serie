@@ -17,11 +17,18 @@
     "is_tutorial": true,
     "spawn_trafo": false,
     "force_hardcore_mode": true,
+    "completion_condition": "zone",
     "available_robot_modes": [
       "straight",
       "curve"
     ],
     "difficulty": "easy",
     "description": "Tutorial focado apenas em modos reto e curva. Modo hardcore forçado para aprendizado estruturado."
+  },
+  "completion_zone": {
+    "x": 1597,
+    "y": 514,
+    "width": 235,
+    "height": 118
   }
 }

@@ -102,6 +102,44 @@ class EventMapManager:
             return (totx / count, toty / count)
         except Exception:
             return None
+
+    def _find_yellow_completion_zone(self, img) -> Optional[Dict[str, int]]:
+        """
+        Encontra a área amarela usada como zona de conclusão da fase.
+
+        A zona é detectada pelos pixels amarelos mais fortes do EventMap.
+        Se houver um retângulo amarelo desenhado no mapa, isso devolve a caixa
+        delimitadora dele para uso como área de conclusão.
+        """
+        try:
+            w, h = img.get_width(), img.get_height()
+            min_x = w
+            min_y = h
+            max_x = -1
+            max_y = -1
+            count = 0
+
+            for y in range(h):
+                for x in range(w):
+                    r, g, b, *rest = img.get_at((x, y))
+                    if r >= 220 and g >= 200 and b <= 120 and abs(int(r) - int(g)) <= 80:
+                        min_x = min(min_x, x)
+                        min_y = min(min_y, y)
+                        max_x = max(max_x, x)
+                        max_y = max(max_y, y)
+                        count += 1
+
+            if count == 0 or max_x < min_x or max_y < min_y:
+                return None
+
+            return {
+                'x': int(min_x),
+                'y': int(min_y),
+                'width': int(max_x - min_x + 1),
+                'height': int(max_y - min_y + 1),
+            }
+        except Exception:
+            return None
     
     def _auto_discover_spawns(self) -> Dict:
         """
@@ -113,6 +151,7 @@ class EventMapManager:
         """
         player_spawn = None
         trafo_spawn = None
+        completion_zone = None
         
         # Tentar carregar imagem do EventMap para descobrir spawns
         try:
@@ -133,6 +172,7 @@ class EventMapManager:
                     player_spawn = list(green)
                 if blue:
                     trafo_spawn = list(blue)
+                completion_zone = self._find_yellow_completion_zone(img)
                 
                 # Log para debug
                 msg = f"[EventMapManager] Auto-descoberto para '{self.map_name}': "
@@ -140,7 +180,9 @@ class EventMapManager:
                     msg += f"player_spawn={green} "
                 if blue:
                     msg += f"trafo_spawn={blue}"
-                if green or blue:
+                if completion_zone:
+                    msg += f" completion_zone={completion_zone}"
+                if green or blue or completion_zone:
                     print(msg)
         except Exception as e:
             print(f"[EventMapManager] Erro ao auto-descobrir spawns: {e}")
@@ -156,6 +198,7 @@ class EventMapManager:
             'player_spawn': player_spawn,
             'trafo_spawn': trafo_spawn,
             'metadata': {'auto_generated': True},
+            'completion_zone': completion_zone,
             'phase_config': {
                 'spawn_trafo': True,
                 'force_hardcore_mode': False,
@@ -164,6 +207,37 @@ class EventMapManager:
                 'difficulty': 'medium'
             }
         }
+
+    def _ensure_completion_zone(self) -> bool:
+        """
+        Garante que a completion_zone exista quando o EventMap tiver a área amarela.
+
+        Returns:
+            True se o metadata foi alterado, False caso contrário.
+        """
+        if self._metadata.get('completion_zone'):
+            return False
+
+        try:
+            if not os.path.exists(self.event_map_image_path):
+                return False
+
+            if pygame.display.get_surface() is None:
+                try:
+                    pygame.display.set_mode((1, 1))
+                except Exception:
+                    pass
+
+            img = pygame.image.load(self.event_map_image_path).convert()
+            completion_zone = self._find_yellow_completion_zone(img)
+            if completion_zone:
+                self._metadata['completion_zone'] = completion_zone
+                print(f"[EventMapManager] Zona de conclusão descoberta para '{self.map_name}': {completion_zone}")
+                return True
+        except Exception as e:
+            print(f"[EventMapManager] Erro ao descobrir completion_zone: {e}")
+
+        return False
     
     def _load(self) -> None:
         """
@@ -178,6 +252,8 @@ class EventMapManager:
                     self._metadata = json.load(f)
                 self._loaded = True
                 print(f"[EventMapManager] Carregado JSON: {self.json_path}")
+                if self._ensure_completion_zone():
+                    self.save_metadata()
             else:
                 # JSON não existe, tentar auto-descobrir spawns
                 print(f"[EventMapManager] JSON não encontrado para '{self.map_name}', auto-descobrindo...")
@@ -312,6 +388,39 @@ class EventMapManager:
             Dicionário com configurações da fase
         """
         return self._metadata.get('phase_config', {})
+
+    def get_completion_zone(self) -> Optional[pygame.Rect]:
+        """
+        Retorna a zona retangular de conclusão da fase, se existir.
+
+        A área é descrita no JSON como um retângulo detectado na cor amarela.
+        """
+        zone = self._metadata.get('completion_zone')
+        if not zone:
+            return None
+
+        try:
+            if isinstance(zone, dict):
+                x = int(zone.get('x', 0))
+                y = int(zone.get('y', 0))
+                width = int(zone.get('width', 0))
+                height = int(zone.get('height', 0))
+                if width > 0 and height > 0:
+                    return pygame.Rect(x, y, width, height)
+            elif isinstance(zone, (list, tuple)) and len(zone) >= 4:
+                x, y, width, height = zone[:4]
+                width = int(width)
+                height = int(height)
+                if width > 0 and height > 0:
+                    return pygame.Rect(int(x), int(y), width, height)
+        except Exception:
+            return None
+
+        return None
+
+    def has_completion_zone(self) -> bool:
+        """Retorna se o EventMap tem uma área de conclusão definida."""
+        return self.get_completion_zone() is not None
     
     def set_player_spawn(self, x: float, y: float) -> None:
         """

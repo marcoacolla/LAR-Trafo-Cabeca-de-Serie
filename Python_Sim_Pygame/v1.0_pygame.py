@@ -184,11 +184,12 @@ def toggle_joystick_leading():
         pass
 
 
-def init_tutorial_state(map_path, dialogue_mgr):
+def init_tutorial_state(map_path, dialogue_mgr, event_map):
     """Initialize tutorial progression tracking for the current map."""
     global is_current_map_tutorial, tutorial_available_event_ids
     global tutorial_visited_event_ids, tutorial_phase_completed
-    global tutorial_completion_show_until
+    global tutorial_completion_show_until, tutorial_completion_zone
+    global tutorial_completion_mode
 
     is_current_map_tutorial = is_tutorial_map(PROJECT_ROOT, map_path)
 
@@ -196,9 +197,24 @@ def init_tutorial_state(map_path, dialogue_mgr):
     tutorial_visited_event_ids = set()
     tutorial_phase_completed = False
     tutorial_completion_show_until = 0
+    tutorial_completion_zone = None
+    tutorial_completion_mode = 'dialogue'
 
     if not is_current_map_tutorial:
         return
+
+    try:
+        phase_config = {}
+        if event_map is not None and hasattr(event_map, 'get_phase_config'):
+            phase_config = event_map.get_phase_config() or {}
+
+        tutorial_completion_mode = str(phase_config.get('completion_condition', 'dialogue')).lower()
+
+        if tutorial_completion_mode == 'zone' and event_map is not None and hasattr(event_map, 'get_completion_zone'):
+            tutorial_completion_zone = event_map.get_completion_zone()
+    except Exception:
+        tutorial_completion_mode = 'dialogue'
+        tutorial_completion_zone = None
 
     try:
         available_ids = dialogue_mgr.get_available_dialog_ids()
@@ -422,6 +438,7 @@ tutorial_available_event_ids = set()
 tutorial_visited_event_ids = set()
 tutorial_phase_completed = False
 tutorial_completion_show_until = 0
+tutorial_completion_zone = None
 
 can_movement_value = CAN_MOVEMENT_NEUTRAL
 current_accelerometer_value = 0
@@ -435,7 +452,7 @@ lever_state = {
 
 # Setup UI screens
 setup_ui_screens()
-init_tutorial_state(selected_map_path, dialogue_manager)
+init_tutorial_state(selected_map_path, dialogue_manager, event_map)
 
 # Helper functions for PauseMenu callbacks
 def _get_global_var(key):
@@ -660,14 +677,26 @@ while running:
                 current_dialog_id = dialogue_manager.process_player_polygon(player.get_body_polygon(), auto_print=False)
 
             if is_current_map_tutorial and (not tutorial_phase_completed):
-                if current_dialog_id in tutorial_available_event_ids:
-                    tutorial_visited_event_ids.add(current_dialog_id)
+                if tutorial_completion_mode == 'zone' and tutorial_completion_zone is not None and hasattr(player, 'get_body_polygon'):
+                    try:
+                        if poly_rect_collision(player.get_body_polygon(), tutorial_completion_zone):
+                            tutorial_phase_completed = True
+                            mark_tutorial_level_completed(PROJECT_ROOT, selected_map_path)
+                            tutorial_completion_show_until = pygame.time.get_ticks() + TUTORIAL_COMPLETED_BANNER_MS
+                    except Exception:
+                        pass
+                elif tutorial_completion_mode == 'dialogue':
+                    if current_dialog_id in tutorial_available_event_ids:
+                        tutorial_visited_event_ids.add(current_dialog_id)
 
-                # A tutorial phase completes after all event blocks in EventMap are visited.
-                if tutorial_available_event_ids and tutorial_available_event_ids.issubset(tutorial_visited_event_ids):
-                    tutorial_phase_completed = True
-                    mark_tutorial_level_completed(PROJECT_ROOT, selected_map_path)
-                    tutorial_completion_show_until = pygame.time.get_ticks() + TUTORIAL_COMPLETED_BANNER_MS
+                    # Fallback: a tutorial phase completes after all event blocks in EventMap are visited.
+                    if tutorial_available_event_ids and tutorial_available_event_ids.issubset(tutorial_visited_event_ids):
+                        tutorial_phase_completed = True
+                        mark_tutorial_level_completed(PROJECT_ROOT, selected_map_path)
+                        tutorial_completion_show_until = pygame.time.get_ticks() + TUTORIAL_COMPLETED_BANNER_MS
+                else:
+                    # completion_condition is set to 'none' or an unknown value; do nothing.
+                    pass
         except Exception:
             pass
 
@@ -935,7 +964,7 @@ while running:
                     current_accelerometer_value = 0
                     trafo_pickup_time = 0
                     trafo_death_expire = 0
-                    init_tutorial_state(selected_map_path, dialogue_manager)
+                    init_tutorial_state(selected_map_path, dialogue_manager, event_map)
 
                 if desired_fullscreen != bool(is_fullscreen):
                     toggle_fullscreen()

@@ -781,11 +781,11 @@ class Player:
         # ===== VALIDAÇÃO: Verificar se modo é permitido =====
         if mode not in self.available_modes:
             print(f"[Player] Modo '{mode}' não disponível. Modos: {self.available_modes}")
-            return  # Bloquear mudança
+            return False  # Bloquear mudança
         # ===== FIM VALIDAÇÃO =====
         
         if self.is_transitioning:
-            return  # avoid overlapping transitions
+            return False  # avoid overlapping transitions
 
         prev_mode = self.curve_mode
 
@@ -865,7 +865,7 @@ class Player:
                 self.steerWheels('curve', angle_offset=self.angle_offset, icr_bias=self.icr_bias)
             except Exception:
                 pass
-            return
+            return True
 
         # ensure lists have correct length
         if len(to_angles) != len(self.wheels):
@@ -892,6 +892,8 @@ class Player:
             self.icr_global = self.curvature.computeICR(angle_offset=self.angle_offset)
         else:
             self.icr_global = None
+
+        return True
 
     # --- speed mode helpers ---
     def set_speed_mode(self, mode_name):
@@ -1029,9 +1031,8 @@ class Player:
                 idx = 0
             next_mode = modes[(idx + 1) % len(modes)]
             # For curve mode use a default curveStart of 0
-
-            self.setMode(next_mode)
-            self.angle_offset = 0
+            if self.setMode(next_mode):
+                self.angle_offset = 0
         except Exception:
             pass
 
