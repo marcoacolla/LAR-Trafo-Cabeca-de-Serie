@@ -23,5 +23,11 @@
     ],
     "difficulty": "easy",
     "description": "Tutorial focado nos sensores. Sem trafo para focar no aprendizado. Apenas modos reto e curva."
+  },
+  "completion_zone": {
+    "x": 386,
+    "y": 486,
+    "width": 97,
+    "height": 213
   }
 }

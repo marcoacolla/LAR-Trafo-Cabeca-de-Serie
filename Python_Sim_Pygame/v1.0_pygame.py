@@ -469,6 +469,15 @@ def _set_global_var(key, value):
     except Exception:
         pass
 
+
+def _close_joystick_controller(ctrl):
+    """Best-effort shutdown of joystick/CAN resources."""
+    try:
+        if ctrl is not None and hasattr(ctrl, 'close'):
+            ctrl.close()
+    except Exception:
+        pass
+
 # Create pause menu with callbacks
 pause_menu = create_pause_menu(
     toggle_fullscreen_fn=toggle_fullscreen,
@@ -567,7 +576,8 @@ while running:
         if getattr(joystick_controller, 'available', False) and hasattr(joystick_controller, 'poll'):
             try:
                 joystick_controller.poll()
-                player.lights = joystick_controller.lights
+                # Copy values to avoid aliasing player and joystick internal lists.
+                player.lights = list(joystick_controller.lights)
             except Exception:
                 joystick_controller.available = False
     except Exception:
@@ -704,26 +714,44 @@ while running:
         try:
             current_accelerometer_value = calculate_accelerometer_value(player, map_image)
             icamento_mm = get_icamento_mm(player)
+            external_lights_active = bool(getattr(joystick_controller, 'available', False))
             
             chosen_mode, chosen_hz, chosen_level, fixed_light_mode = determine_light_mode(
                 current_accelerometer_value, icamento_mm, dialogue_manager
             )
 
+            # Local alert lights are computed independently and then merged with TTC.
+            local_red = False
+            local_yellow = False
+
             if fixed_light_mode == 'alerta':
-                player.lights[0] = False
-                player.lights[2] = True
+                local_yellow = True
             elif fixed_light_mode == 'critico':
-                player.lights[2] = False
-                player.lights[0] = True
+                local_red = True
             elif chosen_mode is not None:
-                if chosen_mode == 'critico':
-                    player.lights[2] = False
-                else:
-                    player.lights[0] = False
-                player.blink_alert(chosen_hz, chosen_mode)
+                try:
+                    hz = float(chosen_hz)
+                except Exception:
+                    hz = 0.0
+
+                if hz > 0:
+                    half_period_ticks = 60.0 / hz
+                    full_period_ticks = half_period_ticks * 2.0
+                    cycle_position = int(player.logic_tick_count % full_period_ticks)
+                    blink_on = cycle_position < half_period_ticks
+                    if chosen_mode == 'critico':
+                        local_red = bool(blink_on)
+                    else:
+                        local_yellow = bool(blink_on)
+
+            if external_lights_active:
+                # Coexistence rule: TTC state is preserved; local alerts only add ON states.
+                player.lights[0] = bool(player.lights[0] or local_red)
+                player.lights[2] = bool(player.lights[2] or local_yellow)
             else:
-                player.lights[0] = False
-                player.lights[2] = False
+                # No TTC available: local alert system fully drives the warning lamps.
+                player.lights[0] = local_red
+                player.lights[2] = local_yellow
 
             # Send accelerometer via CAN if available
             if getattr(joystick_controller, 'available', False) and hasattr(joystick_controller, 'send_inclinometer'):
@@ -731,8 +759,9 @@ while running:
         except Exception:
             current_accelerometer_value = 0
             try:
-                player.lights[0] = False
-                player.lights[2] = False
+                if not bool(getattr(joystick_controller, 'available', False)):
+                    player.lights[0] = False
+                    player.lights[2] = False
             except Exception:
                 pass
 
@@ -921,6 +950,7 @@ while running:
 
                 if _selected_map:
                     selected_map_path = _selected_map
+                    _close_joystick_controller(joystick_controller)
                     game_state = setup_game_objects(screen=None, selected_map_path=selected_map_path)
 
                     screen = game_state['screen']
@@ -969,11 +999,13 @@ while running:
                 if desired_fullscreen != bool(is_fullscreen):
                     toggle_fullscreen()
                 if _action == 'exit':
+                    _close_joystick_controller(joystick_controller)
                     pygame.quit()
                     sys.exit(0)
             except Exception:
                 pass
         elif menu_action == 'exit_game':
+            _close_joystick_controller(joystick_controller)
             pygame.quit()
             sys.exit(0)
     except Exception:
@@ -1152,6 +1184,7 @@ while running:
     pygame.display.flip()
 
 
+_close_joystick_controller(joystick_controller)
 pygame.quit()
 
 

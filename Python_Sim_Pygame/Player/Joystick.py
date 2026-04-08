@@ -77,6 +77,18 @@ class Joystick:
             if msg is None:
                 break
 
+    def close(self):
+        """Release CAN resources so a new controller instance can reconnect cleanly."""
+        bus = self.bus
+        self.bus = None
+        self.available = False
+        if bus is None:
+            return
+        try:
+            bus.shutdown()
+        except Exception:
+            pass
+
     def poll(self):
         """Non-blocking: read available CAN messages and update internal state.
 
