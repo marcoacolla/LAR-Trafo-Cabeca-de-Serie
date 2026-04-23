@@ -8,7 +8,7 @@ import os
 from .config import (
     SCREEN_W, SCREEN_H, PANEL_WIDTH, BOTTOM_BAR_HEIGHT,
     DEFAULT_SPAWN_POINT, TRAFO_SIZE, CONTROL_MODE_KEYBOARD,
-    CONTROL_MODE_JOYSTICK, DEFAULT_JOYSTICK_LEADING,
+    CONTROL_MODE_JOYSTICK, DEFAULT_TTC_CONTROL,
 )
 from .collision import find_green_center, find_blue_center, build_collision_grid
 from World.World import World as world
@@ -99,10 +99,12 @@ def init_joystick_controller(ui):
     return joystick_controller, joystick_available
 
 
-def determine_initial_control_mode(joystick_leading, joystick_available):
+def determine_initial_control_mode(ttc_control, joystick_available):
     """Determine the initial control mode."""
     try:
-        if joystick_leading and joystick_available:
+        if ttc_control:
+            return 'ttc_active'
+        elif joystick_available:
             return CONTROL_MODE_JOYSTICK
     except Exception:
         pass

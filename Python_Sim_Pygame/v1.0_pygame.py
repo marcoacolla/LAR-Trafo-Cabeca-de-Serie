@@ -28,7 +28,7 @@ from game.tutorial_progress import (
 from game.config import (
     SCREEN_W, SCREEN_H, PANEL_WIDTH, BOTTOM_BAR_HEIGHT,
     TARGET_FPS, CONTROL_MODE_KEYBOARD, CONTROL_MODE_JOYSTICK,
-    DEFAULT_HARDCORE_MODE, DEFAULT_FULLSCREEN_MODE, DEFAULT_JOYSTICK_LEADING,
+    DEFAULT_HARDCORE_MODE, DEFAULT_FULLSCREEN_MODE, DEFAULT_TTC_CONTROL,
     CAN_MOVEMENT_NEUTRAL, CAN_MOVEMENT_MAX, CAN_MOVEMENT_MIN,
     ACCELEROMETER_MAX_VALUE, TRAFO_DEATH_LOCK_MS, TRAFO_PICKUP_DISPLAY_MS,
     COLOR_SKY_BLUE,
@@ -83,7 +83,7 @@ def toggle_fullscreen():
 
 def show_start_menu():
     """Show the start menu and map selection."""
-    global selected_map_path, hardcore_mode, joystick_leading, start_menu_desired_fullscreen
+    global selected_map_path, hardcore_mode, ttc_control, start_menu_desired_fullscreen
     
     _initial_cfg = {'hardcore': False, 'fullscreen': False}
     _cfg_res, _action = run_start_menu(screen, _initial_cfg)
@@ -128,7 +128,7 @@ def show_start_menu():
     # Apply settings
     hardcore_mode = bool(_cfg_res.get('hardcore', False))
     start_menu_desired_fullscreen = bool(_cfg_res.get('fullscreen', False))
-    joystick_leading = bool(_cfg_res.get('joystick_leading', True))
+    ttc_control = bool(_cfg_res.get('ttc_control', False))
     
     return selected_map_path
 
@@ -170,13 +170,15 @@ def toggle_hardcore():
     hardcore_mode = not hardcore_mode
 
 
-def toggle_joystick_leading():
-    """Toggle joystick leading mode."""
-    global joystick_leading, control_mode, joystick_available
-    joystick_leading = not joystick_leading
+def toggle_ttc_control():
+    """Toggle ttc control mode."""
+    global ttc_control, control_mode, joystick_available
+    ttc_control = not ttc_control
     
     try:
-        if joystick_leading and joystick_available:
+        if ttc_control:
+            control_mode = 'ttc_active'
+        elif joystick_available:
             control_mode = CONTROL_MODE_JOYSTICK
         else:
             control_mode = CONTROL_MODE_KEYBOARD
@@ -428,9 +430,9 @@ print(f"[Game] Modos de operação disponíveis neste mapa: {available_robot_mod
 is_fullscreen = False
 _windowed_size = (SCREEN_W, SCREEN_H)
 start_menu_desired_fullscreen = False
-joystick_leading = DEFAULT_JOYSTICK_LEADING
+ttc_control = DEFAULT_TTC_CONTROL
 hardcore_mode = hardcore_mode  # Se foi forçado acima, mantém True
-control_mode = CONTROL_MODE_JOYSTICK if (joystick_leading and joystick_available) else CONTROL_MODE_KEYBOARD
+control_mode = 'ttc_active' if ttc_control else (CONTROL_MODE_JOYSTICK if joystick_available else CONTROL_MODE_KEYBOARD)
 last_printed_control_mode = control_mode
 
 is_current_map_tutorial = False
@@ -675,7 +677,7 @@ while running:
             try:
                 control_mode = input_handler.process_movement(
                     keys, player, joystick_controller,
-                    joystick_leading, move_speed, dt_ms=dt
+                    ttc_control, move_speed, dt_ms=dt
                 )
             except Exception:
                 pass
@@ -897,12 +899,12 @@ while running:
                 current_cfg = {
                     'hardcore': bool(hardcore_mode),
                     'fullscreen': bool(is_fullscreen),
-                    'joystick_leading': bool(joystick_leading),
+                    'ttc_control': bool(ttc_control),
                 }
                 pause_menu.close()
                 _cfg_res, _action = run_start_menu(screen, current_cfg, from_pause=True)
                 hardcore_mode = bool(_cfg_res.get('hardcore', hardcore_mode))
-                joystick_leading = bool(_cfg_res.get('joystick_leading', joystick_leading))
+                ttc_control = bool(_cfg_res.get('ttc_control', ttc_control))
                 desired_fullscreen = bool(_cfg_res.get('fullscreen', is_fullscreen))
 
                 _selected_map = None
@@ -987,7 +989,7 @@ while running:
                         _windowed_size = (SCREEN_W, SCREEN_H)
                     is_fullscreen = False
 
-                    control_mode = CONTROL_MODE_JOYSTICK if (joystick_leading and joystick_available) else CONTROL_MODE_KEYBOARD
+                    control_mode = 'ttc_active' if ttc_control else (CONTROL_MODE_JOYSTICK if joystick_available else CONTROL_MODE_KEYBOARD)
                     last_printed_control_mode = control_mode
 
                     can_movement_value = CAN_MOVEMENT_NEUTRAL
@@ -1079,7 +1081,7 @@ while running:
 
     # Draw HUD
     draw_hud_info(screen, player, camera, control_mode, hardcore_mode, 
-                  joystick_leading, current_accelerometer_value, ACCELEROMETER_MAX_VALUE)
+                  ttc_control, current_accelerometer_value, ACCELEROMETER_MAX_VALUE)
 
     # Draw trafo carried badge
     if 'trafo' in globals() and getattr(trafo, 'picked', False):

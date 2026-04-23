@@ -138,17 +138,20 @@ class InputHandler:
         return zoom_changed
     
     def process_movement(self, current_keys, player, joystick_controller, 
-                        joystick_leading, move_speed, pause_menu_open=False):
+                        ttc_control, move_speed, pause_menu_open=False):
         """
         Process player movement from keyboard or joystick.
-        Returns the control mode used ('keyboard' or 'joystick').
+        Returns the control mode used ('keyboard', 'joystick', or 'ttc_active').
         """
         if pause_menu_open:
             return self.control_mode
         
         try:
-            if joystick_leading:
-                # direct CAN joystick control
+            if ttc_control:
+                # TTC control is active - NO movement using joystick or keyboard
+                self.control_mode = 'ttc_active'
+            else:
+                # TTC control is OFF - Normal mode using joystick or keyboard
                 if getattr(joystick_controller, 'available', False):
                     lx, ly, rx, ry = joystick_controller.getJoystickValues()
                     player.move_with_joystick((lx, ly, rx, ry), speed=move_speed)
@@ -157,10 +160,6 @@ class InputHandler:
                     # no CAN joystick available: fallback to keyboard
                     self.control_mode = CONTROL_MODE_KEYBOARD
                     player.move(current_keys, speed=move_speed)
-            else:
-                # keyboard mode
-                self.control_mode = CONTROL_MODE_KEYBOARD
-                player.move(current_keys, speed=move_speed)
         except Exception:
             player.move(current_keys, speed=move_speed)
             self.control_mode = CONTROL_MODE_KEYBOARD

@@ -2,9 +2,9 @@ import pygame
 
 def run_options_menu(screen, initial_config=None):
     """Simple options menu returning updated config dict.
-    initial_config: dict with keys 'hardcore' (bool), 'fullscreen' (bool), and 'joystick_leading' (bool)
+    initial_config: dict with keys 'hardcore' (bool), 'fullscreen' (bool), and 'ttc_control' (bool)
     """
-    cfg = {'hardcore': False, 'fullscreen': False, 'joystick_leading': True}
+    cfg = {'hardcore': False, 'fullscreen': False, 'ttc_control': False}
     if initial_config:
         cfg.update(initial_config)
 
@@ -12,7 +12,7 @@ def run_options_menu(screen, initial_config=None):
     font = pygame.font.SysFont(None, 36)
     running = True
     selected = 0
-    options = ['Modo Hardcore', 'Joystick Leading', 'Voltar']
+    options = ['Modo Hardcore', 'TTC Control', 'Voltar']
     while running:
         dt = clock.tick(60)
         for ev in pygame.event.get():
@@ -29,7 +29,7 @@ def run_options_menu(screen, initial_config=None):
                     if selected == 0:
                         cfg['hardcore'] = not cfg['hardcore']
                     elif selected == 1:
-                        cfg['joystick_leading'] = not cfg['joystick_leading']
+                        cfg['ttc_control'] = not cfg['ttc_control']
                     elif selected == 2:
                         return cfg
             if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
@@ -48,7 +48,7 @@ def run_options_menu(screen, initial_config=None):
                         if i == 0:
                             cfg['hardcore'] = not cfg['hardcore']
                         elif i == 1:
-                            cfg['joystick_leading'] = not cfg['joystick_leading']
+                            cfg['ttc_control'] = not cfg['ttc_control']
                         elif i == 2:
                             return cfg
 
@@ -73,7 +73,7 @@ def run_options_menu(screen, initial_config=None):
             if i == 0:
                 text = f"{label}: {'ON' if cfg['hardcore'] else 'OFF'}"
             elif i == 1:
-                text = f"{label}: {'ON' if cfg['joystick_leading'] else 'OFF'}"
+                text = f"{label}: {'ON' if cfg['ttc_control'] else 'OFF'}"
             else:
                 text = label
             txt = small.render(text, True, (0,70,220))

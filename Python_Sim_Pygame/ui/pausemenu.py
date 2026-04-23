@@ -41,7 +41,7 @@ class PauseMenu:
         self.settings = [
             ('Tela Cheia', 'fullscreen'),
             ('Modo Hardcore', 'hardcore'),
-            ('Joystick Leading', 'joystick_leading'),
+            ('TTC Control', 'ttc_control'),
         ]
 
     def _get_setting_value(self, key):
@@ -54,8 +54,8 @@ class PauseMenu:
                 return bool(self.get_global_fn('is_fullscreen') if self.get_global_fn else False)
             if key == 'hardcore':
                 return bool(self.get_global_fn('hardcore_mode') if self.get_global_fn else False)
-            if key == 'joystick_leading':
-                return bool(self.get_global_fn('joystick_leading') if self.get_global_fn else True)
+            if key == 'ttc_control':
+                return bool(self.get_global_fn('ttc_control') if self.get_global_fn else True)
         except Exception:
             pass
         return False
@@ -69,10 +69,10 @@ class PauseMenu:
                 if self.set_global_fn and callable(self.set_global_fn):
                     current = self.get_global_fn('hardcore_mode') if self.get_global_fn else False
                     self.set_global_fn('hardcore_mode', not bool(current))
-            elif key == 'joystick_leading':
+            elif key == 'ttc_control':
                 if self.set_global_fn and callable(self.set_global_fn):
-                    current = self.get_global_fn('joystick_leading') if self.get_global_fn else True
-                    self.set_global_fn('joystick_leading', not bool(current))
+                    current = self.get_global_fn('ttc_control') if self.get_global_fn else True
+                    self.set_global_fn('ttc_control', not bool(current))
                     try:
                         joystick_available = self.get_global_fn('joystick_available') if self.get_global_fn else False
                         new_mode = 'joystick' if (not bool(current)) and joystick_available else 'keyboard'
@@ -304,8 +304,8 @@ def create_pause_menu(toggle_fullscreen_fn, get_global_fn, set_global_fn):
             return get_global_fn('is_fullscreen')
         elif key == 'hardcore':
             return get_global_fn('hardcore_mode')
-        elif key == 'joystick_leading':
-            return get_global_fn('joystick_leading')
+        elif key == 'ttc_control':
+            return get_global_fn('ttc_control')
         return False
     
     def _toggle(key):

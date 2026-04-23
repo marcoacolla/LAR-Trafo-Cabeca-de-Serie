@@ -85,14 +85,14 @@ def draw_ui_panels(screen, PANEL_WIDTH, BOTTOM_BAR_HEIGHT):
 
 
 def draw_hud_info(screen, player, camera, control_mode, hardcore_mode, 
-                  joystick_leading, accelerometer_value, ACCELEROMETER_MAX_VALUE):
+                  ttc_control, accelerometer_value, ACCELEROMETER_MAX_VALUE):
     """Draw HUD information (control mode, zoom, accelerometer, etc)."""
     try:
         font = pygame.font.SysFont(None, 20)
         
-        # Top-left info: control mode, zoom, hardcore, joystick_leading
+        # Top-left info: control mode, zoom, hardcore, ttc_control
         hud_label = f'Control: {control_mode.upper()}  Zoom: {camera.scale:.2f}  ' \
-                    f'Hardcore: {"ON" if hardcore_mode else "OFF"}  Joy.Lead: {"ON" if joystick_leading else "OFF"}'
+                    f'Hardcore: {"ON" if hardcore_mode else "OFF"}  TTC.Ctrl: {"ON" if ttc_control else "OFF"}'
         hud_text = font.render(hud_label, True, (255, 255, 255))
         hud_outline = font.render(hud_label, True, (0, 0, 0))
         hud_x, hud_y = 8, 8

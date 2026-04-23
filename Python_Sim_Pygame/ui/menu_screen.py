@@ -114,7 +114,7 @@ def run_start_menu(screen, initial_config=None, from_pause=False):
 			screen.blit(txt, (bx + (btn_w - txt.get_width())//2, by + (btn_h - txt.get_height())//2))
 
 		# hint of current options
-		hint = small.render(f"Hardcore: {'ON' if cfg.get('hardcore') else 'OFF'}  |  Joystick Leading: {'ON' if cfg.get('joystick_leading', True) else 'OFF'}", True, (180,180,180))
+		hint = small.render(f"Hardcore: {'ON' if cfg.get('hardcore') else 'OFF'}  |  TTC Control: {'ON' if cfg.get('ttc_control', False) else 'OFF'}", True, (180,180,180))
 		screen.blit(hint, ((sw - hint.get_width())//2, base_y + len(options)*(btn_h+16) + 8))
 
 		pygame.display.flip()

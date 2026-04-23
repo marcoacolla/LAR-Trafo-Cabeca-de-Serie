@@ -124,6 +124,7 @@ class Joystick:
                         self.eixo_esquerdo_y = Joystick_Y_1 / 10.0
                         self.eixo_direito_x = Joystick_X_2 / 10.0
                         self.eixo_direito_y = Joystick_Y_2 / 10.0
+                        print(f"Joystick Direito - X: {self.eixo_direito_x}, Y: {self.eixo_direito_y}")
                 elif msg.arbitration_id == self.CAN_CHANNEL_SELETORA:
                     if len(data) >= 2:
                         selectedMode = struct.unpack('<h', data[0:2])[0]

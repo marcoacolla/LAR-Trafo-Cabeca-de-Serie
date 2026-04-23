@@ -681,12 +681,19 @@ class Player:
                     self.setMode('straight')
                 # Map left_x to angle_offset
                 try:
-                    # módulo de lx entre 0 e 1
+                    # módulo de rx entre 0 e 1
                     mag = abs(robot_curve_joystick_t)
-                    expo = 2.5
-                    mag = mag ** (1/expo)
-                    # interpolação invertida: mag=0 → max, mag=1 → min
-                    radius = GLV.CURVE_MAX_RADIUS - (GLV.CURVE_MAX_RADIUS - GLV.CURVE_MIN_RADIUS) * mag
+                    
+                    # Interpolar a CURVATURA (1/R) em vez do RAIO.
+                    # Isso garante que o controle do ângulo das rodas seja linear e não dê saltos no final!
+                    expo = 1.5
+                    mag = mag ** expo
+                    
+                    k_min = 1.0 / GLV.CURVE_MAX_RADIUS
+                    k_max = 1.0 / GLV.CURVE_MIN_RADIUS
+                    k = k_min + (k_max - k_min) * mag
+                    radius = 1.0 / k
+                    
                     # aplica o sinal de lx (pra direita/esquerda)
                     new_offset = math.copysign(radius, -robot_curve_joystick_t)
 
