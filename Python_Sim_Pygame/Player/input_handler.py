@@ -150,6 +150,20 @@ class InputHandler:
             if ttc_control:
                 # TTC control is active - NO movement using joystick or keyboard
                 self.control_mode = 'ttc_active'
+                # Move via traction value if controller connected
+                if getattr(joystick_controller, 'available', False):
+                    # Valor vai de -77 (traz) a 77 (frente)
+                    # Normalizar para -1 a 1 dividindo por 77.0
+                    traction_raw = joystick_controller.getTractionValue()
+                    traction_normalized = max(-1.0, min(1.0, traction_raw / 77.0))
+                    
+                    player.current_ttc_traction = traction_normalized
+                    
+                    # Usa move_with_joystick passando ry (frente/traz) como a tração invertida (o código usa eixos invertidos)
+                    player.move_with_joystick((0.0, -traction_normalized, 0.0, -traction_normalized), speed=move_speed)
+                    player.curve_mode = 'ttc_c'
+                else:
+                    player.curve_mode = 'ttc_c'
             else:
                 # TTC control is OFF - Normal mode using joystick or keyboard
                 if getattr(joystick_controller, 'available', False):

@@ -45,11 +45,12 @@ class Joystick:
         self.eixo_esquerdo_y = 0.0
         self.eixo_direito_x = 0.0
         self.eixo_direito_y = 0.0
-        self.valor_tracao = 0.0
+        self.valor_tracao = 0
         self.currentMode = 0
         self.currentSpeed = 0
         self.hasChangedMode = False
         self.hasChangedSpeed = False
+        self.last_traction_time = 0.0
         # image id handling
         self._last_image_id = None
         # optional UI manager (or any callable with set_image_id method)
@@ -124,7 +125,6 @@ class Joystick:
                         self.eixo_esquerdo_y = Joystick_Y_1 / 10.0
                         self.eixo_direito_x = Joystick_X_2 / 10.0
                         self.eixo_direito_y = Joystick_Y_2 / 10.0
-                        print(f"Joystick Direito - X: {self.eixo_direito_x}, Y: {self.eixo_direito_y}")
                 elif msg.arbitration_id == self.CAN_CHANNEL_SELETORA:
                     if len(data) >= 2:
                         selectedMode = struct.unpack('<h', data[0:2])[0]
@@ -158,11 +158,21 @@ class Joystick:
                             elif callable(self.ui_manager):
                                 self.ui_manager(id_str)
                 elif msg.arbitration_id == self.CAN_CHANNEL_TRACTION:
-                    if len(data) == 1:
+                    self.last_traction_time = time.time()
+                    if len(data) >= 2:
+                        traction_value = struct.unpack('<h', data[:2])[0]
+                        self.valor_tracao = traction_value
+                    elif len(data) == 1:
                         traction_value = struct.unpack('<b', data)[0]
                         self.valor_tracao = traction_value
-            except Exception:
+            except Exception as e:
+                print(f"CAN processing error: {e}")
                 pass
+        
+        # Reset traction to neutral if timeout (parado sem enviar msg)
+        if time.time() - self.last_traction_time > 0.5:
+            self.valor_tracao = 0  # 0 => Parado
+
     def getJoystickValues(self):
         # return left_x, left_y, right_x, right_y
         return self.eixo_esquerdo_x, self.eixo_esquerdo_y, self.eixo_direito_x, self.eixo_direito_y
@@ -200,15 +210,22 @@ class Joystick:
     
 
     def send_sim_traction(self, value):
+        # A velocidade `value` agora vem do measured_speed ou da lista de w das rodas no loop do game
         if not self.available or self.bus is None:
             return False
         try:
-            v = int(float(value))
-
             data = bytearray(8)
-
-            int_bytes = struct.pack('<i', v)
-            data[4:] = int_bytes[::-1]
+            if isinstance(value, list) and len(value) >= 4:
+                # 4 rodas (cada uma 2 bytes <h) = 8 bytes
+                for i in range(4):
+                    v = int(value[i])
+                    v = max(-32768, min(32767, v))
+                    struct.pack_into('<h', data, i*2, v)
+            else:
+                # Fallback antigo: 1 valor no final do array byte [4:]
+                v = int(float(value))
+                int_bytes = struct.pack('<i', v)
+                data[4:] = int_bytes[::-1]
 
             msg = can.Message(
                 arbitration_id=self.CAN_CHANNEL_SIM_TRACTION,

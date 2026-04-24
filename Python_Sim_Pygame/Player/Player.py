@@ -77,45 +77,88 @@ class Player:
         # Traction simulation state
         self._last_sim_pos = None
         self._sim_traction = 0
+        self.measured_speed = 0.0  # Em cm/s
+        self._last_sim_time = None
         
         # Contador de ticks lógicos (incrementa 60 vezes por segundo)
         self.logic_tick_count = 0
 
     def getName(self):
         return "player"
+
     def TractionSim(self, error_fraction=0.05):
         """Simulate traction reading based on how much the robot moved in the simulator.
 
         - Computes forward/backward displacement since last call (signed),
           projects world displacement onto the robot heading to get signed distance.
-        - Maps one frame's typical step (~move_speed) to the max traction magnitude (77),
-          then applies a small error by scaling down by `error_fraction`.
-        - Returns an integer in the same limits as `valor_tracao` (clamped to -77..77).
+        - Calcula a velocidade real baseada em dx, dy e dt e a assume em cm/s.
+        - Mapeia a velocidade para o limite de tração -77 a 77 com um erro.
         """
+        import time
         try:
             px, py = self.getPosition()
-            if self._last_sim_pos is None:
+            current_time = time.time()
+            
+            if self._last_sim_pos is None or self._last_sim_time is None:
                 self._last_sim_pos = (px, py)
+                self._last_sim_time = current_time
                 self._sim_traction = 0
+                self.measured_speed = 0.0
+                if hasattr(self, 'wheels'):
+                    self._last_wheel_pos = [w.getPosition() for w in self.wheels]
+                    for w in self.wheels:
+                        w.w = 0.0
                 return int(self._sim_traction)
 
             lx, ly = self._last_sim_pos
+            dt = current_time - self._last_sim_time
             dx = px - lx
             dy = py - ly
+            
+            # Atualiza o estado
+            self._last_sim_pos = (px, py)
+            self._last_sim_time = current_time
+
+            # Wheel speeds calculation
+            if hasattr(self, 'wheels'):
+                if not hasattr(self, '_last_wheel_pos') or len(self._last_wheel_pos) != len(self.wheels):
+                    self._last_wheel_pos = [w.getPosition() for w in self.wheels]
+                
+                new_wheel_pos = []
+                for i, w in enumerate(self.wheels):
+                    wpx, wpy = w.getPosition()
+                    new_wheel_pos.append((wpx, wpy))
+                    lwx, lwy = self._last_wheel_pos[i]
+                    dwx = wpx - lwx
+                    dwy = wpy - lwy
+                    
+                    wheel_heading_rad = math.radians(w.getHeading())
+                    w_forward_comp = dwx * math.sin(wheel_heading_rad) + dwy * (-math.cos(wheel_heading_rad))
+                    
+                    w_linear_speed = w_forward_comp / dt if dt > 0.001 else 0.0
+                    radius = w.width / 2.0
+                    w.w = w_linear_speed / radius if radius > 0 else 0.0
+                
+                self._last_wheel_pos = new_wheel_pos
 
             # Project displacement onto forward vector based on heading
             heading_rad = math.radians(self.getHeading())
             # forward unit vector used elsewhere: (sin, -cos)
             forward_comp = dx * math.sin(heading_rad) + dy * (-math.cos(heading_rad))
 
-            # Estimate a per-frame reference distance: use base_speed * speed_multiplier
-            try:
-                ref = max(1e-3, self.base_speed * self.get_speed_multiplier())
-            except Exception:
-                ref = max(1e-3, getattr(self, 'base_speed', 3.0))
+            # Velocidade em "pixels/segundo" (assumindo 1 pixel = 1 cm, então cm/s)
+            if dt > 0.001:
+                self.measured_speed = forward_comp / dt
+            else:
+                self.measured_speed = 0.0
 
-            # Map forward_comp relative to ref so that ref -> 77 units
-            raw = int(round((forward_comp / ref) * 77.0))
+            # Considera a velocidade máxima alcançável pra normalizar.
+            # O robô anda frame_speed por frame (aprox 60 frames = 60 * base_speed). 
+            # Se base_speed for 2.2 e 60 FPS, vmax é aprox 132 cm/s
+            vmax = max(1.0, self.base_speed * getattr(self, 'get_speed_multiplier', lambda: 1.0)() * 60.0)
+            
+            # Cria a abstração do CAN -77 até 77 usando essa velocidade
+            raw = int(round((self.measured_speed / vmax) * 77.0))
 
             # Apply error: slightly reduce magnitude to simulate measurement error
             sim = int(round(raw * (1.0 - float(error_fraction))))
@@ -123,12 +166,10 @@ class Player:
             # Clamp to -77..77
             sim = max(-77, min(77, sim))
 
-            # store and update last pos
             self._sim_traction = sim
-            self._last_sim_pos = (px, py)
             return int(self._sim_traction)
         except Exception:
-            return int(self._sim_traction)
+            return int(getattr(self, '_sim_traction', 0))
 
     def getSimTraction(self):
         """Return last simulated traction value (int, -77..77)."""
@@ -747,6 +788,15 @@ class Player:
                 else:
                     self.makeMovement('forward', step=frame_speed * move_amt)
 
+        elif self.curve_mode == 'ttc_c':
+            # Modo independente (futuro) onde cada roda será independente
+            # Mas por enquanto movimenta o chassi geral baseado em move_amt (traction)
+            if move_amt > 0:
+                if robot_move_joystick < 0:
+                    self.makeMovement('forward', step=frame_speed * move_amt)
+                else:
+                    self.makeMovement('backward', step=frame_speed * move_amt)
+                
         elif self.curve_mode == 'icamento':
             # left_y moves the cursor; also moves vehicle
             CURSOR_SENS = 0.02 * dt_scale
@@ -1212,8 +1262,8 @@ class Player:
         if self.curve_mode in ["curve", "pivotal"]:
             self.steerWheels(self.curve_mode, angle_offset=self.angle_offset, icr_bias=self.icr_bias)
 
-        # Movimento em linha reta
-        if self.curve_mode == "straight":
+        # Movimento em linha reta ou TTC Mode (onde ttc move pelo Joystick Y generalizado)
+        if self.curve_mode in ["straight", "ttc_c"]:
             heading_rad = math.radians(self.getHeading())
             if direction == "forward":
                 dx = step * math.sin(heading_rad)

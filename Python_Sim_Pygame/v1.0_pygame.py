@@ -755,6 +755,18 @@ while running:
                 player.lights[0] = local_red
                 player.lights[2] = local_yellow
 
+            # Calcula velocidade medida baseada no último frame antes de mandar
+            player.TractionSim(error_fraction=0.05)
+            
+            if getattr(joystick_controller, 'available', False) and hasattr(joystick_controller, 'send_sim_traction'):
+                if hasattr(player, 'wheels') and len(player.wheels) >= 4:
+                    ws = [w.w for w in player.wheels]
+                    print(f"[Simulador] Ws(rad/s): FL={ws[0]:.2f}, FR={ws[1]:.2f}, RL={ws[2]:.2f}, RR={ws[3]:.2f}")
+                    joystick_controller.send_sim_traction(ws)
+                else:
+                    print(f"[Simulador] measured_speed: {player.measured_speed:.2f} cm/s")
+                    joystick_controller.send_sim_traction(player.measured_speed)
+
             # Send accelerometer via CAN if available
             if getattr(joystick_controller, 'available', False) and hasattr(joystick_controller, 'send_inclinometer'):
                 joystick_controller.send_inclinometer(current_accelerometer_value)
@@ -1072,7 +1084,58 @@ while running:
 
     # Draw player
     player.draw(camera_or_offset=camera)
-    player.curvature.update(screen)
+    if control_mode != 'ttc_active':
+        player.curvature.update(screen)
+    else:
+        # Só desenha as linhas se quisermos (ttc_active ligado) e pra cada roda individual
+        for wheel in player.wheels:
+            # Tenta pegar tração específica da roda, ou fallback para a tração geral
+            traction = getattr(wheel, 'current_ttc_traction', getattr(player, 'current_ttc_traction', 0.0))
+            
+            if abs(traction) > 0.05:
+                # 1 se pra frente, -1 se pra trás
+                sign = 1 if traction > 0 else -1
+                
+                # Coordenadas da roda projetadas na tela
+                wx, wy = wheel.getPosition()
+                screen_wx, screen_wy = camera.world_to_screen((wx, wy))
+                
+                # Angulação específica da roda (o modelo 2D tem 90 graus de offset visual)
+                heading_deg = wheel.getHeading() - 90
+                angle_rad = math.radians(heading_deg)
+                
+                # Seta vermelha e ainda menor (mais curta), scale da câmera
+                indicator_len = (abs(traction) * 20 + 8) * camera.scale
+                
+                # Vetor 'forward' na tela (y cresce para baixo, então -cos(ang) para norte)
+                fx = math.sin(angle_rad)
+                fy = -math.cos(angle_rad)
+                
+                dx = fx * indicator_len * sign
+                dy = fy * indicator_len * sign
+                
+                x_end = screen_wx + dx
+                y_end = screen_wy + dy
+                
+                # Espessura ajustada para ser mais fina
+                line_thickness = max(1, int(2 * camera.scale))
+                pygame.draw.line(screen, (255, 0, 0), (screen_wx, screen_wy), (x_end, y_end), line_thickness)
+
+                # Triângulo menor na ponta
+                arrow_size = 5 * camera.scale
+                # O ângulo efetivo apontado pela flecha inverte 180 graus na ré (pi radianos)
+                effective_angle = angle_rad if sign == 1 else angle_rad + math.pi
+                
+                angle_left = effective_angle + (math.pi * 0.85)
+                angle_right = effective_angle - (math.pi * 0.85)
+                
+                p1_x = x_end + (math.sin(angle_left) * arrow_size)
+                p1_y = y_end + (-math.cos(angle_left) * arrow_size)
+                
+                p2_x = x_end + (math.sin(angle_right) * arrow_size)
+                p2_y = y_end + (-math.cos(angle_right) * arrow_size)
+                
+                pygame.draw.polygon(screen, (255, 0, 0), [(x_end, y_end), (p1_x, p1_y), (p2_x, p2_y)])
     
     try:
         screen.set_clip(prev_clip)
